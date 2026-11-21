@@ -1,0 +1,26 @@
+# Local AI agent files (ignore only if these are private)
+/AGENT.md
+/ARCHITECTURE.md
+/BACKLOG.md
+/KANBAN.md
+/TASK.md
+/README-IMPLEMENTATION.md
+/docs/
+/.ai/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python & testing artifacts
+.vscode/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+*.egg-info/

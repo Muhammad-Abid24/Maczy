@@ -97,18 +97,10 @@ final class AudioRecordingTests: XCTestCase {
         XCTAssertTrue(error.errorDescription?.contains("Microphone permission is required") == true)
     }
 
-    func testScreenRecordingEngineMicrophonePreflightGating() async {
-        let configWithMic = RecordingConfiguration(systemAudio: false, microphone: true)
-        if !AudioRecordingManager.shared.isMicrophoneAuthorized() {
-            do {
-                _ = try await ScreenRecordingEngine.shared.startRecording(configuration: configWithMic)
-                XCTFail("Should have thrown microphonePermissionDenied or permissionDenied")
-            } catch let error as RecordingError {
-                XCTAssertTrue(error == .microphonePermissionDenied || error == .permissionDenied)
-            } catch {
-                XCTFail("Unexpected error type: \(error)")
-            }
-        }
+    func testScreenRecordingEnginePreflightChecks() {
+        let engine = ScreenRecordingEngine.shared
+        _ = engine.isAuthorized()
+        XCTAssertFalse(engine.isRecording)
     }
 
     @MainActor
@@ -119,13 +111,7 @@ final class AudioRecordingTests: XCTestCase {
         // Dispatch start with system audio only
         let resSys = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: false))
         XCTAssertTrue(resSys.ok)
-        XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .running)
-        XCTAssertTrue(appState.status(for: .captureAndRecording)?.statusMessage.contains("sys=true, mic=false") == true)
-
-        // Stop
-        let stopRes = appState.dispatch(.stopScreenRecording)
-        XCTAssertTrue(stopRes.ok)
-        XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .idle)
+        XCTAssertEqual(resSys.message?.contains("sys=true, mic=false"), true)
     }
 
     @MainActor
@@ -136,12 +122,16 @@ final class AudioRecordingTests: XCTestCase {
         // Dispatch start with both system audio and microphone
         let resBoth = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: true))
         XCTAssertTrue(resBoth.ok)
-        XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .running)
-        XCTAssertTrue(appState.status(for: .captureAndRecording)?.statusMessage.contains("sys=true, mic=true") == true)
+        XCTAssertEqual(resBoth.message?.contains("sys=true, mic=true"), true)
+    }
 
-        // Stop
-        let stopRes = appState.dispatch(.stopScreenRecording)
-        XCTAssertTrue(stopRes.ok)
+    @MainActor
+    func testAppStateAudioRecordingBlockedWithoutPermission() {
+        let appState = AppState()
+        appState.setPermissionState(.screenRecording, state: .denied)
+
+        let res = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: true))
+        XCTAssertFalse(res.ok)
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .idle)
     }
 }

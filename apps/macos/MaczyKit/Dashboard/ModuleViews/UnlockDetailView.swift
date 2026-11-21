@@ -142,12 +142,12 @@ public struct UnlockDetailView: View {
                             .font(.system(size: 24))
 
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Rigorous System Security Boundary")
+                            Text("Rigorous System Security Boundary (ADR-0002)")
                                 .font(.system(size: 13, weight: .bold))
                             Text(NativeUnlockFallbackManager.securityStatement)
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                            Text("Smart Unlock implementation remains BLOCKED pending the MZ-023 technical feasibility review and explicit Product Owner authorization.")
+                            Text("Smart Unlock implementation (MZ-024) is strictly BLOCKED. Third-party Face Unlock cannot dismiss loginwindow without dangerous system modifications or credential storage.")
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(MaczyDesignTokens.statusRed)
                         }
@@ -173,6 +173,38 @@ public struct UnlockDetailView: View {
                         .buttonStyle(.bordered)
                     }
                 }
+
+                // Section 3: MZ-023 Feasibility Scenario Matrix
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("MZ-023 Feasibility Scenario Matrix")
+                        .font(.system(size: 13, weight: .bold))
+
+                    ForEach(FaceUnlockFeasibilityReport.scenarioResults) { result in
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(result.verdict.rawValue)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(MaczyDesignTokens.statusRed)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(MaczyDesignTokens.statusRed.opacity(0.12))
+                                .cornerRadius(4)
+                                .frame(width: 80, alignment: .leading)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(result.scenario.shortTitle)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(result.obstacle)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        Divider()
+                    }
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
             }
             .padding(18)
         }

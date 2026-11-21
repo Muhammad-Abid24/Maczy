@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✨ Maczy
+# Maczy
 ### Mac be Eazy.
 
 **One native Mac app. Less clutter. More flow.**

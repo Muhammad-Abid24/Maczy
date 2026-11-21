@@ -31,6 +31,9 @@ public struct CaptureDetailView: View {
                     ModeSelectButton(title: "Fullscreen", icon: "display", isSelected: selectedMode == "fullscreen") {
                         selectedMode = "fullscreen"
                     }
+                    ModeSelectButton(title: "Scrolling", icon: "arrow.up.and.down.text.horizontal", isSelected: selectedMode == "scrolling") {
+                        selectedMode = "scrolling"
+                    }
                 }
             }
 

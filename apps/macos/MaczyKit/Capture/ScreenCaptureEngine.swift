@@ -8,12 +8,14 @@ public enum CaptureTarget: Sendable, Equatable {
     case fullscreen(displayID: CGDirectDisplayID?)
     case window(windowID: CGWindowID)
     case area(rect: CGRect, displayID: CGDirectDisplayID?)
+    case scrolling
 
     public var modeName: String {
         switch self {
         case .fullscreen: return "fullscreen"
         case .window: return "window"
         case .area: return "area"
+        case .scrolling: return "scrolling"
         }
     }
 }
@@ -98,6 +100,9 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
 
         case .area(let rect, let displayID):
             return try await captureArea(rect: rect, displayID: displayID, content: content)
+
+        case .scrolling:
+            return try await captureWindow(windowID: 0, content: content)
         }
     }
 

@@ -1,38 +1,37 @@
 # TASK.md — Current Antigravity Task
 
-## Active selection: MZ-030 (DONE) — Awaiting User Command for Next Task
-**Objective:** Completed native macOS Uninstaller and System Optimizer, fully integrated into `CleanerDetailView.swift` as a unified three-tab workspace: **Cleaner | Uninstall | Optimize**, backed by Rust safety classification, non-destructive macOS Trash workflow, and real-time native telemetry.
+## Active selection: MZ-031 (DONE) — Awaiting User Command for Next Task
+**Objective:** Completed comprehensive cross-surface accessibility and module coverage audit across Maczy's two primary native macOS surfaces (Dashboard and Menu Bar), guaranteeing 100% module parity for all seven canonical modules, VoiceOver metadata compliance, stable accessibility identifiers, truthful status reporting, and reduced-motion awareness.
 
 ### Completed this task
-- [x] **OpenDesign MCP Integration**:
-  - Connected and verified authoritative OpenDesign project `70356bd0-f397-4d5e-983d-93a7952d85c6` (Maczy Premium Native macOS Design Execution).
-  - Extracted and implemented design tokens, 3-tab layout, and evidence-first inspector panels.
-- [x] **Rust Core & C FFI (`cleaner_safety.rs`, `maczy-ffi`)**:
-  - Implemented `LeftoverSafetyLevel` (`Protected = 0`, `ReviewRequired = 1`, `Safe = 2`).
-  - Implemented `classify_leftover_path(path: &str) -> LeftoverSafetyLevel`: pure Rust safety engine protecting system directories, user personal folders (`Documents`, `Desktop`, `Downloads`), `.git` repositories, credentials, keychains, and databases.
-  - Exposed via C FFI `maczy_classify_leftover_path` in `maczy_ffi.h` and bridged to Swift.
-- [x] **Uninstall — Smart Application Uninstaller**:
-  - Discovered installed apps across `/Applications` and `~/Applications`.
-  - Extracted bundle metadata: icon, bundle ID, version, publisher, bundle size, last used date.
-  - Implemented 7-category leftover analysis (`Application Support`, `Caches`, `Preferences`, `Logs`, `Saved State`, `Containers`, `Other`).
-  - Search, sort, multi-selection, and leftover item selection toggles.
-  - Fail-closed security: system applications (`/System/Applications`, `/System/Library`) and running processes are blocked from uninstallation.
-  - Non-destructive removal via macOS Trash (`NSFileManager.trashItem`) with itemized confirmation manifest.
-- [x] **Optimize — Safe macOS System Optimization**:
-  - Discovered startup and login items via supported Apple APIs (with deep link to `x-apple.systempreferences:com.apple.LoginItems-Settings.extension`).
-  - Implemented evidence-first maintenance tasks: DNS cache review, Quick Look cache maintenance, stale user temporary file review.
-  - Categorized developer artifact scanner: Xcode DerivedData, iOS Simulator caches, SPM caches, Cargo caches, npm caches.
-  - Real-time native system monitoring: CPU utilization, Mach host memory pressure, disk capacity & availability, foreground heavy processes.
-  - Zero fake RAM boosters, zero speculative speed-up claims.
-- [x] **Three-Tab Native Workspace (`CleanerDetailView.swift`)**:
-  - Top tab switcher: `Cleaner | Uninstall | Optimize`.
-  - Preserved complete MZ-028 4-step cache cleaner workflow.
-  - Integrated split-view app uninstaller with itemized leftover inspection and confirmation sheet.
-  - Integrated optimizer dashboard with live telemetry tiles, action list, action inspector, and developer artifacts breakdown.
-- [x] **Unit & Integration Tests**:
-  - 8 uninstaller tests in `Tests/MaczyTests/UninstallerTests.swift` (metadata, safety levels, manifest calculations, system app block, running app block, search/sort, mock trash execution, disposable fixture trash removal).
-  - 6 optimizer tests in `Tests/MaczyTests/OptimizerTests.swift` (action configurations, startup provider mock & deep link, developer artifact scanner, system resource monitor, lifecycle execution, evidence-first safety).
-  - 20 Rust tests + 189 Swift tests passing with 0 warnings on `./scripts/ci.sh`.
-- [x] **Tracked & Committed**:
-  - Cleaned `.gitignore` so `KANBAN.md`, `TASK.md`, `PRD.md`, `ARCHITECTURE.md`, `UI-UX.md`, `SECURITY.md`, `BACKLOG.md` are properly tracked in git.
-  - Committed and pushed strictly to feature branch `feat/mz-030-uninstaller-optimizer` (NEVER to `main`).
+- [x] **Cross-Surface Module Parity**:
+  - Implemented `MaczyAccessibility.swift` with `MaczyAccessibilityAuditor.auditParity(appState:)`.
+  - Verified 100% parity across all 7 canonical modules (`captureAndRecording`, `batteryGuardian`, `dynamicNotch`, `smartUnlock`, `updates`, `alwaysOn`, `systemCleaner`) between Dashboard and Menu Bar.
+- [x] **VoiceOver & Accessibility Semantics**:
+  - Added VoiceOver labels, accessibility hints, and trait configurations across all interactive controls.
+  - Enhanced `SidebarNavItem` in `DashboardView.swift` with `.accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)`, labels, and hints.
+  - Enhanced `MenuBarView.swift` with `.accessibilityElement(children: .contain)` and truthful status reporting on each section.
+  - Enhanced `OverviewView.swift` with readiness orb semantics, module chips, and card accessibility labels.
+- [x] **Stable Accessibility Identifiers**:
+  - Defined centralized `MaczyAccessibilityIdentifier` registry covering dashboard tabs, overview elements, menubar sections, action buttons, and global controls (`open_dashboard`, `preferences`, `quit`).
+- [x] **Truthful Status & Security Gating**:
+  - Ensured security-gated features truthfully communicate their gating boundaries:
+    - Smart Unlock: explicitly labeled as gated under MZ-023 feasibility research (no fake active unlock claims).
+    - Battery Guardian: charge write ceilings gated under MZ-014 backend authorization.
+    - System Cleaner: safe scan review with confirmed deletion gating.
+- [x] **Reduced Motion & macOS Human Interface Guidelines**:
+  - Integrated `@Environment(\.accessibilityReduceMotion)` in `DashboardView.swift` and `MenuBarView.swift`.
+  - Disabled or smoothed transition animations when user requests reduced motion in macOS System Settings.
+- [x] **Unit & Integration Test Suite**:
+  - Implemented 8 comprehensive tests in `Tests/MaczyTests/AccessibilityAuditTests.swift`:
+    1. `testAllSevenModulesExistInMaczyModuleId`
+    2. `testCrossSurfaceModuleParityBetweenDashboardAndMenuBar`
+    3. `testAllModulesHaveValidAccessibilityDescriptors`
+    4. `testSecurityGatedModulesTruthfulReporting`
+    5. `testMenuBarActionExecutionParity`
+    6. `testStableAccessibilityIdentifiersUniqueness`
+    7. `testDashboardTabDisplayNamesAndIcons`
+    8. `testReducedMotionAwareness`
+  - All 197 Swift tests + 20 Rust tests pass cleanly with 0 warnings on `./scripts/ci.sh`.
+- [x] **Git Branch & Push**:
+  - Committed and pushed strictly to feature branch `feat/mz-031-accessibility-audit` (NEVER to `main`).

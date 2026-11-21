@@ -34,7 +34,7 @@
 | MZ-028 | P1 | Cleaner scanner: safe, read-only, category manifests | 002,005 | no mutations; fixture scan and exclusions |
 | MZ-029 | P2 | Cleanup review, confirm, safe Trash & audit | 028,025 | isolate-fixture destructive tests only |
 | MZ-030 | P2 | Smart uninstaller, safe optimizer, and dev cache analyzer | 028,025 | DONE: app inventory, leftover safety levels, macOS Trash workflow, startup items deep link, maintenance tasks, dev caches, live resource monitor |
-| MZ-031 | P2 | Main app & menubar module coverage audits | 003,004,007,013,015,022,026,027,028 | 7 accessible entries, parity test |
+| MZ-031 | P2 | Main app & menubar module coverage audits | 003,004,007,013,015,022,026,027,028 | DONE: MaczyAccessibility, 7-module parity, VoiceOver labels/hints/traits, stable identifiers, reduced motion |
 | MZ-032 | P3 | Profiling, ad-hoc signing, Sparkle community-update and distribution | all release P0/P1/P2 dependencies incl. 034 | verified ad-hoc DMG, documented Gatekeeper limitations, EdDSA appcast tests; owner-approved publish |
 
 ## Notes

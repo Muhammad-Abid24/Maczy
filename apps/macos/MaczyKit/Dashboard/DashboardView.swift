@@ -6,6 +6,7 @@ import SwiftUI
 /// - Distinctive Maczy branding and design tokens.
 public struct DashboardView: View {
     @ObservedObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @MainActor
     public init(appState: AppState) {
@@ -22,7 +23,7 @@ public struct DashboardView: View {
             // MARK: - Sidebar (Compact 64px, Expands to 224px on hover)
             SidebarView(appState: appState)
                 .frame(width: appState.isSidebarExpanded ? MaczyDesignTokens.sidebarWideWidth : MaczyDesignTokens.sidebarCompactWidth)
-                .animation(.easeInOut(duration: 0.2), value: appState.isSidebarExpanded)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: appState.isSidebarExpanded)
                 .background(Color(NSColor.windowBackgroundColor).opacity(0.92))
                 .onHover { isHovered in
                     appState.isSidebarExpanded = isHovered
@@ -44,22 +45,31 @@ public struct DashboardView: View {
                     Spacer()
 
                     // Command Search Trigger
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 11))
-                        Text("Search actions")
-                            .font(.system(size: 11))
-                        Text("⌘K")
-                            .font(.system(size: 9, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(Color.primary.opacity(0.08))
-                            .cornerRadius(4)
+                    Button {
+                        // Quick action palette trigger
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 11))
+                            Text("Search actions")
+                                .font(.system(size: 11))
+                            Text("⌘K")
+                                .font(.system(size: 9, design: .monospaced))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.08))
+                                .cornerRadius(4)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(8)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(8)
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Search actions")
+                    .accessibilityHint("Opens quick action command palette, shortcut Command K")
+                    .accessibilityIdentifier(MaczyAccessibilityIdentifier.dashboardOverviewSearchButton)
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 16)
@@ -156,7 +166,8 @@ struct SidebarView: View {
                 title: "Overview",
                 icon: "square.grid.2x2.fill",
                 isSelected: appState.selectedTab == .overview,
-                isExpanded: appState.isSidebarExpanded
+                isExpanded: appState.isSidebarExpanded,
+                accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.overview)
             ) {
                 appState.selectedTab = .overview
             }
@@ -170,7 +181,8 @@ struct SidebarView: View {
                     title: module.displayName,
                     icon: module.iconName,
                     isSelected: appState.selectedTab == .module(module),
-                    isExpanded: appState.isSidebarExpanded
+                    isExpanded: appState.isSidebarExpanded,
+                    accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardModuleTab(module)
                 ) {
                     appState.selectedTab = .module(module)
                 }
@@ -186,7 +198,8 @@ struct SidebarView: View {
                 title: "Permissions",
                 icon: "hand.raised.fill",
                 isSelected: appState.selectedTab == .permissions,
-                isExpanded: appState.isSidebarExpanded
+                isExpanded: appState.isSidebarExpanded,
+                accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.permissions)
             ) {
                 appState.selectedTab = .permissions
             }
@@ -195,7 +208,8 @@ struct SidebarView: View {
                 title: "Settings",
                 icon: "gearshape.fill",
                 isSelected: appState.selectedTab == .settings,
-                isExpanded: appState.isSidebarExpanded
+                isExpanded: appState.isSidebarExpanded,
+                accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.settings)
             ) {
                 appState.selectedTab = .settings
             }
@@ -221,6 +235,7 @@ struct SidebarNavItem: View {
     let icon: String
     let isSelected: Bool
     let isExpanded: Bool
+    var accessibilityIdentifier: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -246,6 +261,10 @@ struct SidebarNavItem: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
+        .accessibilityHint(isSelected ? "Currently selected tab" : "Switch to \(title) tab")
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityIdentifier(accessibilityIdentifier ?? "maczy.sidebar.\(title.lowercased())")
     }
 }

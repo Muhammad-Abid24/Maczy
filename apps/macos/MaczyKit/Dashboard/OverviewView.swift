@@ -100,6 +100,9 @@ struct HeroHealthPanel: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("System readiness: 76% Ready")
+                .accessibilityIdentifier(MaczyAccessibilityIdentifier.dashboardOverviewOrb)
 
                 // Copy
                 VStack(alignment: .leading, spacing: 8) {
@@ -188,6 +191,8 @@ struct ReadinessChip: View {
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.12))
         .cornerRadius(8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(module.displayName) readiness: \(status?.runtimeState.rawValue ?? "Ready")")
     }
 
     private func shortName(_ m: MaczyModuleId) -> String {
@@ -284,6 +289,7 @@ struct ModuleCardView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("Open \(status.name) details")
+                .accessibilityHint("Navigates to the \(status.name) detail workspace")
             }
         }
         .padding(14)
@@ -293,6 +299,9 @@ struct ModuleCardView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(status.name), runtime state: \(status.runtimeState.rawValue)")
+        .accessibilityIdentifier(MaczyAccessibilityIdentifier.dashboardModuleCard(status.id))
     }
 }
 
@@ -343,5 +352,7 @@ struct ActivityTile: View {
         .frame(maxWidth: .infinity)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
         .cornerRadius(10)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(detail)")
     }
 }

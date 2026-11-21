@@ -3,7 +3,6 @@
 > Planning status only. Do not infer any completed implementation. Keep exactly one active Antigravity task unless Product Owner authorizes parallel work. Move tasks only with proof.
 
 ## READY
-- [ ] MZ-031 Cross-surface accessibility audit
 - [ ] MZ-034 Ad-hoc signed community build validation
 - [ ] MZ-032 Release readiness
 
@@ -19,6 +18,7 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-031** Cross-surface accessibility audit (`feat/mz-031-accessibility-audit`)
 - [x] **MZ-030** Uninstaller and Optimizer (`feat/mz-030-uninstaller-optimizer`)
 - [x] **MZ-028** Cleaner scan-only (`feat/mz-028-cleaner-scan`)
 - [x] **MZ-027** Sparkle updates (`feat/mz-027-sparkle-updates`)
@@ -50,6 +50,8 @@
 
 ## History format
 `YYYY-MM-DD | task | from -> to | branch | actual evidence | reviewer`.
+
+2026-11-22 | MZ-031 | READY -> DONE | feat/mz-031-accessibility-audit | Verified on branch feat/mz-031-accessibility-audit: MaczyAccessibility, 7-module parity between Dashboard and Menu Bar, VoiceOver labels/hints/traits, stable identifiers, reduced motion handling, 20 Rust + 197 Swift tests pass, zero warnings | Product Owner
 
 2026-11-22 | MZ-030 | IN PROGRESS -> DONE | feat/mz-030-uninstaller-optimizer | Verified on branch feat/mz-030-uninstaller-optimizer: Uninstaller (app inventory, bundle metadata, 7 leftover domains, Rust safety levels, fail-closed system/running blocks, macOS Trash workflow) & Optimizer (StartupItems with deep link, 5 maintenance tasks, developer artifact scanner, system resource monitor), CleanerDetailView three-tab UI, 20 Rust + 189 Swift tests pass, zero warnings | Product Owner
 

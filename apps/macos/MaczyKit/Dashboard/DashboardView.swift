@@ -91,11 +91,9 @@ public struct DashboardView: View {
                                 CleanerDetailView(appState: appState)
                             }
                         case .permissions:
-                            PermissionNoticeStrip()
+                            PermissionCenterView(appState: appState)
                         case .settings:
-                            Text("Maczy Preferences (Stored Locally)")
-                                .font(.system(size: 16, weight: .semibold))
-                                .padding()
+                            SecurityPreferencesView(appState: appState)
                         }
                     }
                     .padding(28)

@@ -3,6 +3,7 @@ import SwiftUI
 public struct CaptureDetailView: View {
     @ObservedObject var appState: AppState
     @State private var selectedMode = "area"
+    @State private var selectedResolution: RecordingResolutionPreset = .native
 
     public init(appState: AppState) {
         self.appState = appState
@@ -31,6 +32,19 @@ public struct CaptureDetailView: View {
                 }
             }
 
+            // Resolution Presets
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Recording Resolution Preset")
+                    .font(.system(size: 13, weight: .semibold))
+
+                Picker("", selection: $selectedResolution) {
+                    ForEach(RecordingResolutionPreset.allCases, id: \.self) { preset in
+                        Text(preset.displayName).tag(preset)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             HStack(spacing: 12) {
                 Button("Capture Screenshot (\(selectedMode.capitalized))") {
                     _ = appState.dispatch(.captureScreenshot(mode: selectedMode))
@@ -38,7 +52,7 @@ public struct CaptureDetailView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(MaczyDesignTokens.brandPurple)
 
-                Button("Start Recording") {
+                Button("Start Recording (\(selectedResolution.displayName))") {
                     _ = appState.dispatch(.startScreenRecording(target: "display", systemAudio: false, microphone: false))
                 }
                 .buttonStyle(.bordered)

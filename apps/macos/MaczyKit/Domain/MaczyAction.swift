@@ -11,8 +11,10 @@ public enum MaczyAction: Sendable {
     case selectChargeLimit(percentage: Int)
     case refreshBatteryTelemetry
 
-    // Dynamic Notch
+    // Dynamic Notch & Window Snap
     case toggleNotchExpanded
+    case snapActiveWindow(preset: WindowSnapPreset)
+    case undoWindowSnap
 
     // Smart Unlock (Gated by MZ-023)
     case requestFaceUnlockEnrollment
@@ -35,7 +37,7 @@ public enum MaczyAction: Sendable {
             return .captureAndRecording
         case .selectChargeLimit, .refreshBatteryTelemetry:
             return .batteryGuardian
-        case .toggleNotchExpanded:
+        case .toggleNotchExpanded, .snapActiveWindow, .undoWindowSnap:
             return .dynamicNotch
         case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
             return .smartUnlock
@@ -56,6 +58,8 @@ public enum MaczyAction: Sendable {
         case .selectChargeLimit(let pct): return "charge_\(pct)"
         case .refreshBatteryTelemetry: return "battery_refresh"
         case .toggleNotchExpanded: return "notch_toggle"
+        case .snapActiveWindow(let preset): return "snap_\(preset.rawValue)"
+        case .undoWindowSnap: return "snap_undo"
         case .requestFaceUnlockEnrollment: return "unlock_enroll"
         case .triggerSessionUnlock: return "unlock_trigger"
         case .checkForUpdates: return "updates_check"

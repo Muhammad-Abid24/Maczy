@@ -9,6 +9,7 @@ public struct NotchContainerView: View {
     @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
     @ObservedObject var liveCoordinator: LiveActivityCoordinator = .shared
     @ObservedObject var clipboardManager: ClipboardManager = .shared
+    @ObservedObject var windowSnapManager: WindowSnapManager = .shared
     @State private var isHovered: Bool = false
 
     public init(coordinator: NotchCoordinator) {
@@ -397,6 +398,59 @@ public struct NotchContainerView: View {
                     }
                 }
             }
+
+            // Window Snap Bar
+            HStack(spacing: 8) {
+                Text("Snap:")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+
+                Button(action: { _ = appState.dispatch(.snapActiveWindow(preset: .leftHalf)) }) {
+                    Image(systemName: "rectangle.lefthalf.filled")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help("Snap Left Half (⌃⌥←)")
+
+                Button(action: { _ = appState.dispatch(.snapActiveWindow(preset: .rightHalf)) }) {
+                    Image(systemName: "rectangle.righthalf.filled")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help("Snap Right Half (⌃⌥→)")
+
+                Button(action: { _ = appState.dispatch(.snapActiveWindow(preset: .maximize)) }) {
+                    Image(systemName: "rectangle.fill")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help("Maximize (⌃⌥↩)")
+
+                Button(action: { _ = appState.dispatch(.snapActiveWindow(preset: .center)) }) {
+                    Image(systemName: "rectangle.center.inset.filled")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .help("Center Window (⌃⌥C)")
+
+                Spacer()
+
+                if windowSnapManager.canUndo {
+                    Button(action: { _ = appState.dispatch(.undoWindowSnap) }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.uturn.backward")
+                            Text("Undo Snap")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundColor(MaczyDesignTokens.statusOrange)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.06))
+            .cornerRadius(8)
 
             // Footer Status
             HStack {

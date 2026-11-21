@@ -211,6 +211,20 @@ public final class AppState: ObservableObject {
             transitionRuntime(moduleId: moduleId, to: next, message: msg)
             result = CommandResult.success(message: msg)
 
+        case .snapActiveWindow(let preset):
+            let snapResult = WindowSnapManager.shared.snapActiveWindow(to: preset)
+            if snapResult.ok {
+                transitionRuntime(moduleId: moduleId, to: .idle, message: "Window snapped to \(preset.rawValue)")
+            }
+            result = snapResult
+
+        case .undoWindowSnap:
+            let undoResult = WindowSnapManager.shared.undoLastSnap()
+            if undoResult.ok {
+                transitionRuntime(moduleId: moduleId, to: .idle, message: "Window snap undone")
+            }
+            result = undoResult
+
         case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
             // Strictly blocked by capability gate; unreachable if capability gate holds
             result = CommandResult.failure(

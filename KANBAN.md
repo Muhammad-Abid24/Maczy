@@ -3,7 +3,6 @@
 > Planning status only. Do not infer any completed implementation. Keep exactly one active Antigravity task unless Product Owner authorizes parallel work. Move tasks only with proof.
 
 ## READY
-- [ ] MZ-030 Uninstaller and developer artifacts
 - [ ] MZ-031 Cross-surface accessibility audit
 - [ ] MZ-034 Ad-hoc signed community build validation
 - [ ] MZ-032 Release readiness
@@ -20,6 +19,7 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-030** Uninstaller and Optimizer (`feat/mz-030-uninstaller-optimizer`)
 - [x] **MZ-028** Cleaner scan-only (`feat/mz-028-cleaner-scan`)
 - [x] **MZ-027** Sparkle updates (`feat/mz-027-sparkle-updates`)
 - [x] **MZ-026** Always On Manager (`feat/mz-026-always-on`)
@@ -50,6 +50,10 @@
 
 ## History format
 `YYYY-MM-DD | task | from -> to | branch | actual evidence | reviewer`.
+
+2026-11-22 | MZ-030 | IN PROGRESS -> DONE | feat/mz-030-uninstaller-optimizer | Verified on branch feat/mz-030-uninstaller-optimizer: Uninstaller (app inventory, bundle metadata, 7 leftover domains, Rust safety levels, fail-closed system/running blocks, macOS Trash workflow) & Optimizer (StartupItems with deep link, 5 maintenance tasks, developer artifact scanner, system resource monitor), CleanerDetailView three-tab UI, 20 Rust + 189 Swift tests pass, zero warnings | Product Owner
+
+2026-11-22 | MZ-030 | READY -> IN PROGRESS | feat/mz-030-uninstaller-optimizer | Implementing Uninstaller (app discovery, leftover analysis, Trash workflow) & Optimizer (startup items, system/developer maintenance, system monitor) | In Progress
 
 2026-11-22 | MZ-028 | IN PROGRESS -> DONE | feat/mz-028-cleaner-scan | Verified on branch feat/mz-028-cleaner-scan: CleanCategory (6 categories), CleanerExclusions (strict system/docs/repo protection), CleanerScanManifest, CleanerManager, CleanerDetailView 4-step UX, MZ-029 gate fail-closed, 15 Rust + 174 Swift tests pass, zero warnings | Product Owner
 

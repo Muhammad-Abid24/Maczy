@@ -20,6 +20,8 @@ public final class AppState: ObservableObject {
     public let alwaysOnManager: AlwaysOnManager
     public let updateManager: UpdateManager
     public let cleanerManager: CleanerManager
+    public let uninstallManager: UninstallManager
+    public let optimizerManager: OptimizerManager
 
     private var permissions: [MaczyPermission: PermissionState] = [:]
     private var lastDispatchedActions: [String: Date] = [:]
@@ -32,7 +34,9 @@ public final class AppState: ObservableObject {
         debounceInterval: TimeInterval = 0.2,
         alwaysOnManager: AlwaysOnManager? = nil,
         updateManager: UpdateManager? = nil,
-        cleanerManager: CleanerManager? = nil
+        cleanerManager: CleanerManager? = nil,
+        uninstallManager: UninstallManager? = nil,
+        optimizerManager: OptimizerManager? = nil
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
@@ -40,6 +44,8 @@ public final class AppState: ObservableObject {
         self.alwaysOnManager = alwaysOnManager ?? AlwaysOnManager()
         self.updateManager = updateManager ?? UpdateManager()
         self.cleanerManager = cleanerManager ?? CleanerManager()
+        self.uninstallManager = uninstallManager ?? UninstallManager()
+        self.optimizerManager = optimizerManager ?? OptimizerManager()
 
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {

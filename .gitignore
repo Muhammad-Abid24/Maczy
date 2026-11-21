@@ -1,14 +1,5 @@
-/ARCHITECTURE.md
-/BACKLOG.md
-/README-IMPLEMENTATION.md
-!/docs/
-/.ai/
-/.docs/
-/PRD.md
-/SECURITY.md
-/UI-UX.md
-/AGENT.md
-/.DS_Store
+# macOS
+.DS_Store
 
 # Environment and secrets
 .env
@@ -32,3 +23,9 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+
+# Local AI / temporary doc cache
+/README-IMPLEMENTATION.md
+!/docs/
+/.ai/
+/.docs/

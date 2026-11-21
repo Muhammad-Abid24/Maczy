@@ -47,6 +47,21 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
                 }
             }
 
+        case "scrolling":
+            Task {
+                do {
+                    ScrollingCaptureCoordinator.shared.startSession()
+                    let firstSlice = try await ScreenCaptureEngine.shared.capture(target: .window(windowID: 0))
+                    ScrollingCaptureCoordinator.shared.appendSlice(firstSlice.image)
+                    let stitched = try ScrollingCaptureCoordinator.shared.finishSession()
+                    self.handleCaptureSuccess(stitched)
+                } catch let error as CaptureError {
+                    self.handleCaptureFailure(error)
+                } catch {
+                    self.handleCaptureFailure(.captureFailed(error.localizedDescription))
+                }
+            }
+
         default:
             Task {
                 do {

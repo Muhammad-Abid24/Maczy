@@ -15,10 +15,12 @@ jobs:
     name: Build & Test (macOS 15 Apple Silicon)
     runs-on: macos-15
     timeout-minutes: 25
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -27,7 +29,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/
@@ -71,7 +73,7 @@ jobs:
 
       - name: Upload Test Logs on Failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: swift-test-log
           path: test.log

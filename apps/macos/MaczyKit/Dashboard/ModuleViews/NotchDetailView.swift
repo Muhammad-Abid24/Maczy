@@ -5,6 +5,7 @@ public struct NotchDetailView: View {
     @ObservedObject var coordinator: NotchCoordinator = .shared
     @ObservedObject var mediaCoordinator: MediaHUDCoordinator = .shared
     @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
+    @ObservedObject var liveCoordinator: LiveActivityCoordinator = .shared
 
     public init(appState: AppState) {
         self.appState = appState
@@ -122,6 +123,43 @@ public struct NotchDetailView: View {
                 .padding(12)
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(10)
+            }
+
+            // MARK: - Live Activities & Notifications
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Live Activities & Notifications")
+                    .font(.system(size: 13, weight: .semibold))
+
+                HStack(spacing: 8) {
+                    Button("Test Notification") {
+                        liveCoordinator.postNotification(
+                            title: "Messages",
+                            message: "Review requested for PR #14",
+                            appIcon: "bubble.left.and.bubble.right.fill"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Start 5m Timer") {
+                        liveCoordinator.startTimer(id: "timer_demo", totalSeconds: 300)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Simulate Download") {
+                        liveCoordinator.setTaskProgress(id: "dl_demo", status: "Xcode.xip", progress: 0.75)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    if !liveCoordinator.activities.isEmpty {
+                        Button("Clear") {
+                            liveCoordinator.clearAll()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(MaczyDesignTokens.statusRed)
+                    }
+                }
             }
 
             // MARK: - System HUD Sliders (Volume & Brightness)

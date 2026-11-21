@@ -7,6 +7,7 @@ public struct NotchContainerView: View {
     @ObservedObject var appState: AppState = .shared
     @ObservedObject var mediaCoordinator: MediaHUDCoordinator = .shared
     @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
+    @ObservedObject var liveCoordinator: LiveActivityCoordinator = .shared
     @State private var isHovered: Bool = false
 
     public init(coordinator: NotchCoordinator) {
@@ -80,6 +81,40 @@ public struct NotchContainerView: View {
                     .background(Color.black.opacity(0.95))
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(MaczyDesignTokens.brandPurple.opacity(0.4), lineWidth: 1))
+
+                } else if let activity = liveCoordinator.primaryActivity {
+                    // Live Activity or Notification Pill
+                    HStack(spacing: 8) {
+                        Image(systemName: activity.iconName)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.statusOrange)
+
+                        Text(activity.title)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+
+                        if !activity.formattedTimer.isEmpty {
+                            Text(activity.formattedTimer)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                        } else if !activity.formattedRecording.isEmpty {
+                            Text(activity.formattedRecording)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(MaczyDesignTokens.statusRed)
+                        } else {
+                            Text(activity.message)
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.95))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
 
                 } else if mediaCoordinator.isMediaActive {
                     // Now Playing compact pill
@@ -272,6 +307,57 @@ public struct NotchContainerView: View {
                 .padding(10)
                 .background(Color.white.opacity(0.06))
                 .cornerRadius(10)
+            }
+
+            // MARK: - Live Activities Section
+            if !liveCoordinator.activities.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(liveCoordinator.activities) { act in
+                        HStack(spacing: 10) {
+                            Image(systemName: act.iconName)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(act.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.statusOrange)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(act.title)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(act.message)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+
+                            Spacer()
+
+                            if case .timer(_, _, let isRunning) = act.type {
+                                Button(action: {
+                                    if isRunning {
+                                        liveCoordinator.pauseTimer(id: act.id)
+                                    } else {
+                                        liveCoordinator.resumeTimer(id: act.id)
+                                    }
+                                }) {
+                                    Image(systemName: isRunning ? "pause.circle.fill" : "play.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white.opacity(0.85))
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Button(action: {
+                                liveCoordinator.dismissActivity(id: act.id)
+                            }) {
+                                Image(systemName: "xmark.circle")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(8)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(8)
+                    }
+                }
             }
 
             // Quick Actions Stage

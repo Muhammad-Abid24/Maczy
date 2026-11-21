@@ -25,7 +25,7 @@ Use the **Dashboard** for complete control, the **Menu Bar** for quick actions, 
 
 ### The three ways to use Maczy
 
-| 🖥️ Dashboard | 🎛️ Menu Bar | ✨ Dynamic Notch |
+| Dashboard | Menu Bar | Dynamic Notch |
 | --- | --- | --- |
 | Full settings, history, advanced tools | Fast toggles and everyday actions | Live status, previews, notifications, contextual controls |
 
@@ -35,13 +35,13 @@ The Dashboard follows an **owner-approved OpenDesign project through OpenDesign 
 
 | Module | Planned capabilities |
 | --- | --- |
-| 📸 **Capture & Record** | Area, window, and scrolling screenshots; OCR; display/window/region recording; output sizing; separate system-audio and microphone toggles |
-| 🔋 **Battery Guardian** | Battery health/status monitoring; selectable charge ceilings **80 / 85 / 90 / 95 / 100%**; actual charging/bypass state only when verified by the device/backend |
-| 🏝️ **Dynamic Notch** | Now Playing, notifications, volume/brightness HUD, clipboard, window snapping, Lock Screen shortcut, Maczy live activities, AirPods/TWS connection animations |
-| 🔐 **Smart Unlock** | Opt-in **in-app** Face Unlock with Touch ID alternative for protected Maczy features; subject to security validation |
-| 🔄 **Automatic Updates** | Sparkle-based update checks and verified downloads, with planned stable/beta/nightly channels |
-| ☕ **Always On** | Keep system/display awake, timed sessions, power-aware rules, and quick toggles |
-| 🧹 **System Cleaner** | Disk analysis, uninstall leftovers review, developer cache analysis, explicit cleanup confirmation and history |
+| **Capture & Record** | Area, window, and scrolling screenshots; OCR; display/window/region recording; output sizing; separate system-audio and microphone toggles |
+| **Battery Guardian** | Battery health/status monitoring; selectable charge ceilings **80 / 85 / 90 / 95 / 100%**; actual charging/bypass state only when verified by the device/backend |
+| **Dynamic Notch** | Now Playing, notifications, volume/brightness HUD, clipboard, window snapping, Lock Screen shortcut, Maczy live activities, AirPods/TWS connection animations |
+| **Smart Unlock** | Opt-in **in-app** Face Unlock with Touch ID alternative for protected Maczy features; subject to security validation |
+| **Automatic Updates** | Sparkle-based update checks and verified downloads, with planned stable/beta/nightly channels |
+| **Always On** | Keep system/display awake, timed sessions, power-aware rules, and quick toggles |
+| **System Cleaner** | Disk analysis, uninstall leftovers review, developer cache analysis, explicit cleanup confirmation and history |
 
 **Everything remains accessible from the Dashboard and Menu Bar.** The Notch is optional; supported controls adapt to the hardware and permissions available.
 

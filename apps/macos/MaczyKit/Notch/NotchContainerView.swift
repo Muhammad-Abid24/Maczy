@@ -397,6 +397,14 @@ public struct NotchContainerView: View {
                         clipboardManager.copyToPasteboard(item: first)
                     }
                 }
+
+                NotchActionButton(
+                    icon: "lock.fill",
+                    title: "Lock",
+                    color: MaczyDesignTokens.statusRed
+                ) {
+                    _ = appState.dispatch(.lockScreen)
+                }
             }
 
             // Window Snap Bar

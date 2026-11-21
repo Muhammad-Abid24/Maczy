@@ -225,6 +225,13 @@ public final class AppState: ObservableObject {
             }
             result = undoResult
 
+        case .lockScreen:
+            let lockResult = SystemLockManager.shared.lockScreen()
+            if lockResult.ok {
+                transitionRuntime(moduleId: moduleId, to: .idle, message: "System locked")
+            }
+            result = lockResult
+
         case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
             // Strictly blocked by capability gate; unreachable if capability gate holds
             result = CommandResult.failure(

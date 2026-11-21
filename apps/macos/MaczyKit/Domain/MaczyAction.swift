@@ -15,6 +15,7 @@ public enum MaczyAction: Sendable {
     case toggleNotchExpanded
     case snapActiveWindow(preset: WindowSnapPreset)
     case undoWindowSnap
+    case lockScreen
 
     // Smart Unlock (Gated by MZ-023)
     case requestFaceUnlockEnrollment
@@ -37,7 +38,7 @@ public enum MaczyAction: Sendable {
             return .captureAndRecording
         case .selectChargeLimit, .refreshBatteryTelemetry:
             return .batteryGuardian
-        case .toggleNotchExpanded, .snapActiveWindow, .undoWindowSnap:
+        case .toggleNotchExpanded, .snapActiveWindow, .undoWindowSnap, .lockScreen:
             return .dynamicNotch
         case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
             return .smartUnlock
@@ -60,6 +61,7 @@ public enum MaczyAction: Sendable {
         case .toggleNotchExpanded: return "notch_toggle"
         case .snapActiveWindow(let preset): return "snap_\(preset.rawValue)"
         case .undoWindowSnap: return "snap_undo"
+        case .lockScreen: return "system_lock"
         case .requestFaceUnlockEnrollment: return "unlock_enroll"
         case .triggerSessionUnlock: return "unlock_trigger"
         case .checkForUpdates: return "updates_check"

@@ -179,6 +179,10 @@ impl AppState {
             .unwrap_or(PermissionState::NotDetermined)
     }
 
+    pub fn set_debounce_duration(&mut self, duration: Duration) {
+        self.debounce_duration = duration;
+    }
+
     /// Primary Action Pipeline:
     /// Action -> Capability Gate -> Permission Gate -> Command -> Result -> State Update
     pub fn dispatch(&mut self, action: Action) -> CommandResult {

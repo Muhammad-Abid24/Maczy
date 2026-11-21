@@ -192,9 +192,10 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
             captureHeight = max(2, Int(rect.height))
         }
 
-        // Even dimensions required by H.264 / HEVC encoders
-        captureWidth = (captureWidth / 2) * 2
-        captureHeight = (captureHeight / 2) * 2
+        // Apply resolution preset and even dimensions required by H.264 / HEVC encoders
+        let outputDims = configuration.calculateDimensions(sourceWidth: captureWidth, sourceHeight: captureHeight)
+        captureWidth = outputDims.width
+        captureHeight = outputDims.height
 
         // 3. Initialize AVAssetWriter
         let writer: AVAssetWriter

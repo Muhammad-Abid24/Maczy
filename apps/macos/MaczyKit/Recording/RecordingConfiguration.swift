@@ -34,6 +34,8 @@ public enum RecordingVideoCodec: String, Sendable, CaseIterable {
 public struct RecordingConfiguration: Sendable {
     public let target: RecordingTarget
     public let codec: RecordingVideoCodec
+    public let preset: RecordingResolutionPreset
+    public let aspectMode: AspectRatioMode
     public let frameRate: Int
     public let systemAudio: Bool
     public let microphone: Bool
@@ -43,6 +45,8 @@ public struct RecordingConfiguration: Sendable {
     public init(
         target: RecordingTarget = .display(displayID: nil),
         codec: RecordingVideoCodec = .h264,
+        preset: RecordingResolutionPreset = .native,
+        aspectMode: AspectRatioMode = .fit,
         frameRate: Int = 60,
         systemAudio: Bool = false,
         microphone: Bool = false,
@@ -51,6 +55,8 @@ public struct RecordingConfiguration: Sendable {
     ) {
         self.target = target
         self.codec = codec
+        self.preset = preset
+        self.aspectMode = aspectMode
         self.frameRate = frameRate
         self.systemAudio = systemAudio
         self.microphone = microphone
@@ -80,16 +86,37 @@ public struct RecordingConfiguration: Sendable {
         outputDirectory.appendingPathComponent(filename)
     }
 
+    public func calculateDimensions(sourceWidth: Int, sourceHeight: Int) -> (width: Int, height: Int) {
+        ResolutionCalculator.calculateOutputDimensions(
+            sourceWidth: sourceWidth,
+            sourceHeight: sourceHeight,
+            preset: preset,
+            aspectMode: aspectMode
+        )
+    }
+
     public func buildVideoSettings(width: Int, height: Int) -> [String: Any] {
+        let bitrate = ResolutionCalculator.estimateBitrate(
+            width: width,
+            height: height,
+            frameRate: frameRate,
+            codec: codec
+        )
+
+        var compressionProps: [String: Any] = [
+            AVVideoAverageBitRateKey: bitrate,
+            AVVideoExpectedSourceFrameRateKey: frameRate
+        ]
+
+        if codec == .h264 {
+            compressionProps[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
+        }
+
         return [
             AVVideoCodecKey: codec.avCodecType,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: width * height * 4,
-                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoExpectedSourceFrameRateKey: frameRate
-            ]
+            AVVideoCompressionPropertiesKey: compressionProps
         ]
     }
 }

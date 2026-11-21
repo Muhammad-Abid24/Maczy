@@ -123,23 +123,37 @@ private final class CapturePreviewHUDContentView: NSView {
         let copyButton = NSButton(title: "Copy", target: self, action: #selector(copyClicked))
         copyButton.bezelStyle = .rounded
         copyButton.controlSize = .small
-        copyButton.frame = NSRect(x: 10, y: 10, width: 60, height: 26)
+        copyButton.frame = NSRect(x: 8, y: 10, width: 48, height: 26)
         addSubview(copyButton)
+
+        let ocrButton = NSButton(title: "OCR", target: self, action: #selector(ocrClicked))
+        ocrButton.bezelStyle = .rounded
+        ocrButton.controlSize = .small
+        ocrButton.frame = NSRect(x: 58, y: 10, width: 48, height: 26)
+        addSubview(ocrButton)
 
         let openButton = NSButton(title: "Open", target: self, action: #selector(openClicked))
         openButton.bezelStyle = .rounded
         openButton.controlSize = .small
-        openButton.frame = NSRect(x: 75, y: 10, width: 60, height: 26)
+        openButton.frame = NSRect(x: 108, y: 10, width: 50, height: 26)
         addSubview(openButton)
 
         let dismissButton = NSButton(title: "✕", target: self, action: #selector(dismissClicked))
         dismissButton.bezelStyle = .rounded
         dismissButton.controlSize = .small
-        dismissButton.frame = NSRect(x: 175, y: 10, width: 35, height: 26)
+        dismissButton.frame = NSRect(x: 180, y: 10, width: 32, height: 26)
         addSubview(dismissButton)
     }
 
     @objc private func copyClicked() { onCopy() }
     @objc private func openClicked() { onOpen() }
     @objc private func dismissClicked() { onDismiss() }
+    @objc private func ocrClicked() {
+        Task {
+            if let result = try? await VisionOCREngine.shared.recognizeText(in: image), !result.isEmpty {
+                VisionOCREngine.shared.copyToPasteboard(result.fullText)
+            }
+            onDismiss()
+        }
+    }
 }

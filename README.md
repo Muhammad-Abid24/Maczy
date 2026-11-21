@@ -15,7 +15,7 @@ An open-source, Apple Silicon-first toolkit bringing screen capture, battery car
 
 ---
 
-## 🌟 What is Maczy?
+## What is Maczy?
 
 Your Mac is powerful. Your workflow shouldn't require seven utilities running at once.
 
@@ -31,7 +31,7 @@ Use the **Dashboard** for complete control, the **Menu Bar** for quick actions, 
 
 The Dashboard follows an **owner-approved OpenDesign project through OpenDesign MCP**. Menu Bar and Notch follow native macOS design conventions, implemented with SwiftUI/AppKit.
 
-## 🧰 Everything in one place
+## Everything in one place
 
 | Module | Planned capabilities |
 | --- | --- |
@@ -45,7 +45,7 @@ The Dashboard follows an **owner-approved OpenDesign project through OpenDesign 
 
 **Everything remains accessible from the Dashboard and Menu Bar.** The Notch is optional; supported controls adapt to the hardware and permissions available.
 
-## 💚 Why build Maczy?
+## Why build Maczy?
 
 - **Native by default.** SwiftUI/AppKit for macOS experiences, Rust for carefully selected core logic.
 - **Lightweight by design.** Lazy-load modules, avoid unnecessary polling, measure memory/CPU on real hardware—including baseline M1/8 GB.
@@ -55,7 +55,7 @@ The Dashboard follows an **owner-approved OpenDesign project through OpenDesign 
 
 Performance goals are **targets**, not measured results. Benchmarks will be published only after real builds are tested.
 
-## 🧱 Built for Apple Silicon
+## Built for Apple Silicon
 
 | Requirement | Plan |
 | --- | --- |
@@ -69,7 +69,7 @@ Performance goals are **targets**, not measured results. Benchmarks will be publ
 
 Macs without batteries or physical notches will have those hardware-specific capabilities gracefully disabled or adapted. Future macOS releases require testing before support can be claimed.
 
-## 🗺️ Roadmap
+## Roadmap
 
 The project is in **planning**, so these are proposed milestones—not completed deliverables.
 
@@ -83,7 +83,7 @@ The project is in **planning**, so these are proposed milestones—not completed
 
 Track implementation in [BACKLOG.md](BACKLOG.md), [TASK.md](TASK.md), and [KANBAN.md](KANBAN.md). A checked box requires verification—not just an implementation claim.
 
-## ⚠️ Technical reality, not marketing promises
+## Technical reality, not marketing promises
 
 Some features need careful platform-specific work:
 
@@ -94,7 +94,7 @@ Some features need careful platform-specific work:
 - **Cleaner** will use **scan → review → confirm → clean**. Never silent deletion.
 - **Ad-hoc signing** does not equal Apple Developer ID signing or notarization. Gatekeeper may require user-approved exceptions for community downloads. Sparkle update signatures are a separate security mechanism.
 
-## 🤝 Help build Maczy
+## Help build Maczy
 
 **Maczy needs contributors**—especially people who enjoy native macOS development, Rust, accessibility, security, and device testing.
 
@@ -108,19 +108,19 @@ You can help with:
 
 > **Interested in the project?** Star the repository to show interest, share it with other Mac users, and open a discussion or issue with a useful idea, device-specific test case, or implementation proposal—once those GitHub features are enabled.
 
-## 🔒 Security & privacy
+## Security & privacy
 
 Maczy is designed around **explicit user consent**: capture permissions, microphone and camera access, system-control boundaries, and cleanup confirmations are handled as separate capabilities.
 
 Please **do not post exploitable security reports publicly**.
 
-## 🙏 Inspiration and acknowledgments
+## Inspiration and acknowledgments
 
 Maczy takes inspiration from excellent macOS tools: **CleanShot X** (capture workflows), **[batt](https://github.com/charlie0129/batt)** (battery management), **Notchy** (notch interactions), and **[Mole](https://github.com/tw93/mole)** (maintenance).
 
 Maczy is an **independent project**, not affiliated with or endorsed by these projects or Apple. Inspiration is not a license to copy proprietary assets or code. Third-party code and license compatibility must be reviewed **before** integration or redistribution.
 
-## 📄 License
+## License
 
 **To be finalized before distributing source implementations or binaries.** License compatibility—particularly across battery and cleaner integrations—requires review. Until a license is added, do not assume the repository's contents carry an open-source license solely because this is the project's goal.
 

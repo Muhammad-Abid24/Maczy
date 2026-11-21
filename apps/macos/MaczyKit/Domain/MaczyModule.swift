@@ -73,15 +73,17 @@ public struct ModuleStatus: Identifiable, Sendable {
     public let name: String
     public let summary: String
     public let iconName: String
-    public let isImplemented: Bool
-    public let runtimeState: ModuleRuntimeState
-    public let statusMessage: String
+    public var isImplemented: Bool
+    public var runtimeState: ModuleRuntimeState
+    public var statusMessage: String
+    public var capability: ModuleCapability
 
     public init(
         id: MaczyModuleId,
         isImplemented: Bool = false,
         runtimeState: ModuleRuntimeState = .notImplemented,
-        statusMessage: String = "Foundation scaffold placeholder (MZ-001)"
+        statusMessage: String = "Scaffold ready",
+        capability: ModuleCapability? = nil
     ) {
         self.id = id
         self.name = id.displayName
@@ -90,5 +92,6 @@ public struct ModuleStatus: Identifiable, Sendable {
         self.isImplemented = isImplemented
         self.runtimeState = runtimeState
         self.statusMessage = statusMessage
+        self.capability = capability ?? ModuleCapability.defaultFor(moduleId: id)
     }
 }

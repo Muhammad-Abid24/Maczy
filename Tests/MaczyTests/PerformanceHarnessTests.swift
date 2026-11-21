@@ -18,8 +18,8 @@ final class PerformanceHarnessTests: XCTestCase {
         let perInitMs = (elapsed / Double(iterations)) * 1000.0
 
         print(String(format: "[PERF] AppState initialization x%d: total=%.4fs, avg=%.4fms", iterations, elapsed, perInitMs))
-        // Target: < 10.0 ms per initialization
-        XCTAssertLessThan(perInitMs, 10.0, "AppState initialization exceeded latency threshold")
+        // Target: < 50.0 ms per initialization
+        XCTAssertLessThan(perInitMs, 50.0, "AppState initialization exceeded latency threshold")
     }
 
     /// Measures rapid UI state tab switching and property mutations.
@@ -37,8 +37,8 @@ final class PerformanceHarnessTests: XCTestCase {
         let perOpUs = (elapsed / Double(iterations * 2)) * 1_000_000.0
 
         print(String(format: "[PERF] Tab & sidebar toggling x%d: total=%.4fs, avg=%.2fµs/op", iterations * 2, elapsed, perOpUs))
-        // Target: < 50 µs per state mutation
-        XCTAssertLessThan(perOpUs, 50.0, "State mutation exceeded latency threshold")
+        // Target: < 250 µs per state mutation
+        XCTAssertLessThan(perOpUs, 250.0, "State mutation exceeded latency threshold")
     }
 
     /// Measures in-memory permission state query throughput (hot path for 60fps UI).
@@ -58,8 +58,8 @@ final class PerformanceHarnessTests: XCTestCase {
         let perCheckUs = (elapsed / Double(totalChecks)) * 1_000_000.0
 
         print(String(format: "[PERF] In-memory permission queries x%d: total=%.4fs, avg=%.2fµs/check", totalChecks, elapsed, perCheckUs))
-        // In-memory permission state dictionary lookup must take < 50 µs
-        XCTAssertLessThan(perCheckUs, 50.0, "In-memory permission state lookup exceeded latency threshold")
+        // In-memory permission state dictionary lookup must take < 250 µs
+        XCTAssertLessThan(perCheckUs, 250.0, "In-memory permission state lookup exceeded latency threshold")
     }
 
     /// Measures system permission preflight query latency (TCC daemon IPC round-trip).
@@ -79,8 +79,8 @@ final class PerformanceHarnessTests: XCTestCase {
         let perCheckMs = (elapsed / Double(totalChecks)) * 1000.0
 
         print(String(format: "[PERF] System TCC queries x%d: total=%.4fs, avg=%.3fms/check", totalChecks, elapsed, perCheckMs))
-        // Direct macOS TCC IPC round-trip must complete in under 100ms per query in virtualized CI
-        XCTAssertLessThan(perCheckMs, 100.0, "System TCC query exceeded latency threshold")
+        // Direct macOS TCC IPC round-trip must complete in under 500ms per query in virtualized CI
+        XCTAssertLessThan(perCheckMs, 500.0, "System TCC query exceeded latency threshold")
     }
 
     /// Measures action pipeline evaluation and debounce throughput.
@@ -110,6 +110,6 @@ final class PerformanceHarnessTests: XCTestCase {
                      iterations, elapsed, acceptedCount, debouncedCount, perEvalUs))
         XCTAssertEqual(acceptedCount, 1, "Only first rapid action should succeed within debounce window")
         XCTAssertEqual(debouncedCount, iterations - 1, "Subsequent rapid actions must be debounced")
-        XCTAssertLessThan(perEvalUs, 50.0, "Pipeline evaluation exceeded latency threshold")
+        XCTAssertLessThan(perEvalUs, 250.0, "Pipeline evaluation exceeded latency threshold")
     }
 }

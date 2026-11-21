@@ -86,6 +86,14 @@ public struct RecordingConfiguration: Sendable {
         outputDirectory.appendingPathComponent(filename)
     }
 
+    public var audioMode: RecordingAudioMode {
+        RecordingAudioMode.from(systemAudio: systemAudio, microphone: microphone)
+    }
+
+    public var hasAudio: Bool {
+        audioMode.hasAudio
+    }
+
     public func calculateDimensions(sourceWidth: Int, sourceHeight: Int) -> (width: Int, height: Int) {
         ResolutionCalculator.calculateOutputDimensions(
             sourceWidth: sourceWidth,

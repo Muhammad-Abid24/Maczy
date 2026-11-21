@@ -4,6 +4,8 @@ public struct CaptureDetailView: View {
     @ObservedObject var appState: AppState
     @State private var selectedMode = "area"
     @State private var selectedResolution: RecordingResolutionPreset = .native
+    @State private var systemAudioEnabled: Bool = false
+    @State private var microphoneEnabled: Bool = false
 
     public init(appState: AppState) {
         self.appState = appState
@@ -45,6 +47,22 @@ public struct CaptureDetailView: View {
                 .pickerStyle(.segmented)
             }
 
+            // Audio Switches
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Audio Sources")
+                    .font(.system(size: 13, weight: .semibold))
+
+                HStack(spacing: 20) {
+                    Toggle("System Audio", isOn: $systemAudioEnabled)
+                        .toggleStyle(.switch)
+                        .font(.system(size: 12))
+
+                    Toggle("Microphone Voice", isOn: $microphoneEnabled)
+                        .toggleStyle(.switch)
+                        .font(.system(size: 12))
+                }
+            }
+
             HStack(spacing: 12) {
                 Button("Capture Screenshot (\(selectedMode.capitalized))") {
                     _ = appState.dispatch(.captureScreenshot(mode: selectedMode))
@@ -53,7 +71,11 @@ public struct CaptureDetailView: View {
                 .tint(MaczyDesignTokens.brandPurple)
 
                 Button("Start Recording (\(selectedResolution.displayName))") {
-                    _ = appState.dispatch(.startScreenRecording(target: "display", systemAudio: false, microphone: false))
+                    _ = appState.dispatch(.startScreenRecording(
+                        target: "display",
+                        systemAudio: systemAudioEnabled,
+                        microphone: microphoneEnabled
+                    ))
                 }
                 .buttonStyle(.bordered)
             }

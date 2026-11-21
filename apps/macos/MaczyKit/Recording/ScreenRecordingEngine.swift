@@ -17,6 +17,7 @@ public struct RecordingState: Sendable, Equatable {
 /// Errors occurring during screen recording lifecycle.
 public enum RecordingError: Error, LocalizedError, Equatable {
     case permissionDenied
+    case microphonePermissionDenied
     case alreadyRecording
     case notRecording
     case writerInitializationFailed(String)
@@ -27,6 +28,8 @@ public enum RecordingError: Error, LocalizedError, Equatable {
         switch self {
         case .permissionDenied:
             return "Screen Recording permission is required. Enable access in System Settings."
+        case .microphonePermissionDenied:
+            return "Microphone permission is required for voice recording. Enable access in System Settings."
         case .alreadyRecording:
             return "A recording session is already in progress."
         case .notRecording:
@@ -48,6 +51,7 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
     private var activeStream: SCStream?
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
+    private var audioInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
 
     private var currentConfig: RecordingConfiguration?
@@ -86,7 +90,8 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
     private func storeSession(
         stream: SCStream,
         writer: AVAssetWriter,
-        input: AVAssetWriterInput,
+        videoInput: AVAssetWriterInput,
+        audioInput: AVAssetWriterInput?,
         adaptor: AVAssetWriterInputPixelBufferAdaptor,
         configuration: RecordingConfiguration
     ) {
@@ -94,7 +99,8 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
         defer { lock.unlock() }
         self.activeStream = stream
         self.assetWriter = writer
-        self.videoInput = input
+        self.videoInput = videoInput
+        self.audioInput = audioInput
         self.pixelBufferAdaptor = adaptor
         self.currentConfig = configuration
         self.sessionStartTime = .invalid
@@ -102,23 +108,25 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
         self.recordingStartDate = Date()
     }
 
-    private func resetSession() -> (SCStream, AVAssetWriter, AVAssetWriterInput, RecordingConfiguration)? {
+    private func resetSession() -> (SCStream, AVAssetWriter, AVAssetWriterInput, AVAssetWriterInput?, RecordingConfiguration)? {
         lock.lock()
         defer { lock.unlock() }
         guard isRecordingInternal,
               let stream = activeStream,
               let writer = assetWriter,
-              let input = videoInput,
+              let videoInput = videoInput,
               let config = currentConfig else {
             return nil
         }
+        let audioIn = self.audioInput
         self.isRecordingInternal = false
         self.activeStream = nil
         self.assetWriter = nil
         self.videoInput = nil
+        self.audioInput = nil
         self.pixelBufferAdaptor = nil
         self.currentConfig = nil
-        return (stream, writer, input, config)
+        return (stream, writer, videoInput, audioIn, config)
     }
 
     /// Preflight check for Screen Recording TCC authorization.
@@ -133,6 +141,12 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
     public func startRecording(configuration: RecordingConfiguration) async throws -> URL {
         guard isAuthorized() else {
             throw RecordingError.permissionDenied
+        }
+
+        if configuration.microphone {
+            guard AudioRecordingManager.shared.isMicrophoneAuthorized() else {
+                throw RecordingError.microphonePermissionDenied
+            }
         }
 
         try checkAndClaimRecording()
@@ -206,8 +220,8 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
         }
 
         let videoSettings = configuration.buildVideoSettings(width: captureWidth, height: captureHeight)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-        input.expectsMediaDataInRealTime = true
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        videoInput.expectsMediaDataInRealTime = true
 
         let pixelBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
@@ -215,14 +229,26 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
             kCVPixelBufferHeightKey as String: captureHeight
         ]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
+            assetWriterInput: videoInput,
             sourcePixelBufferAttributes: pixelBufferAttributes
         )
 
-        guard writer.canAdd(input) else {
+        guard writer.canAdd(videoInput) else {
             throw RecordingError.writerInitializationFailed("Cannot add video input to asset writer")
         }
-        writer.add(input)
+        writer.add(videoInput)
+
+        var audioInput: AVAssetWriterInput?
+        if configuration.hasAudio {
+            let audioSettings = AudioRecordingManager.shared.buildAACAudioSettings()
+            let aInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+            aInput.expectsMediaDataInRealTime = true
+            guard writer.canAdd(aInput) else {
+                throw RecordingError.writerInitializationFailed("Cannot add audio input to asset writer")
+            }
+            writer.add(aInput)
+            audioInput = aInput
+        }
 
         guard writer.startWriting() else {
             throw RecordingError.writerInitializationFailed(writer.error?.localizedDescription ?? "startWriting failed")
@@ -236,6 +262,16 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
         streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
         streamConfig.showsCursor = true
 
+        if configuration.systemAudio {
+            streamConfig.capturesAudio = true
+        }
+
+        if #available(macOS 15.0, *) {
+            if configuration.microphone {
+                streamConfig.captureMicrophone = true
+            }
+        }
+
         if case .region(let rect, _) = configuration.target {
             streamConfig.sourceRect = rect
         }
@@ -243,6 +279,14 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
         let stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: DispatchQueue(label: "com.maczy.recording.videoQueue", qos: .userInitiated))
+            if configuration.systemAudio {
+                try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "com.maczy.recording.audioQueue", qos: .userInitiated))
+            }
+            if #available(macOS 15.0, *) {
+                if configuration.microphone {
+                    try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: DispatchQueue(label: "com.maczy.recording.micQueue", qos: .userInitiated))
+                }
+            }
             try await stream.startCapture()
         } catch {
             writer.cancelWriting()
@@ -253,7 +297,8 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
         storeSession(
             stream: stream,
             writer: writer,
-            input: input,
+            videoInput: videoInput,
+            audioInput: audioInput,
             adaptor: adaptor,
             configuration: configuration
         )
@@ -263,15 +308,16 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
 
     /// Stops the active recording session, finalizes the MP4 asset, and returns the file URL.
     public func stopRecording() async throws -> URL {
-        guard let (stream, writer, input, config) = resetSession() else {
+        guard let (stream, writer, videoInput, audioInput, config) = resetSession() else {
             throw RecordingError.notRecording
         }
 
         // 1. Stop capture stream
         try await stream.stopCapture()
 
-        // 2. Finalize video writer
-        input.markAsFinished()
+        // 2. Finalize video & audio writers
+        videoInput.markAsFinished()
+        audioInput?.markAsFinished()
         let finalURL = config.outputURL
 
         await withCheckedContinuation { continuation in
@@ -286,35 +332,62 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
     // MARK: - SCStreamOutput
 
     public func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen, sampleBuffer.isValid else { return }
+        guard sampleBuffer.isValid else { return }
 
-        lock.lock()
-        guard isRecordingInternal,
-              let writer = assetWriter,
-              let input = videoInput,
-              let adaptor = pixelBufferAdaptor else {
+        switch type {
+        case .screen:
+            lock.lock()
+            guard isRecordingInternal,
+                  let writer = assetWriter,
+                  let input = videoInput,
+                  let adaptor = pixelBufferAdaptor else {
+                lock.unlock()
+                return
+            }
+
+            let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+            // Initialize session start time with the first frame timestamp
+            if sessionStartTime == .invalid {
+                sessionStartTime = timestamp
+                writer.startSession(atSourceTime: timestamp)
+            }
+
+            guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                lock.unlock()
+                return
+            }
+
+            if input.isReadyForMoreMediaData {
+                adaptor.append(imageBuffer, withPresentationTime: timestamp)
+                frameCount += 1
+            }
             lock.unlock()
-            return
-        }
 
-        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        case .audio, .microphone:
+            lock.lock()
+            guard isRecordingInternal,
+                  let writer = assetWriter,
+                  let audioIn = audioInput else {
+                lock.unlock()
+                return
+            }
 
-        // Initialize session start time with the first frame timestamp
-        if sessionStartTime == .invalid {
-            sessionStartTime = timestamp
-            writer.startSession(atSourceTime: timestamp)
-        }
+            let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
-        guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            if sessionStartTime == .invalid {
+                sessionStartTime = timestamp
+                writer.startSession(atSourceTime: timestamp)
+            }
+
+            if audioIn.isReadyForMoreMediaData {
+                audioIn.append(sampleBuffer)
+            }
             lock.unlock()
-            return
-        }
 
-        if input.isReadyForMoreMediaData {
-            adaptor.append(imageBuffer, withPresentationTime: timestamp)
-            frameCount += 1
+        @unknown default:
+            break
         }
-        lock.unlock()
     }
 
     private func findDisplay(displayID: CGDirectDisplayID?, in content: SCShareableContent) -> SCDisplay? {

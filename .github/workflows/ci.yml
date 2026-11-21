@@ -61,7 +61,20 @@ jobs:
         run: cargo test --workspace --verbose
 
       - name: Swift Unit & Performance Tests
-        run: swift test --verbose
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee test.log || {
+            echo "::error::Swift test failed. Summary:"
+            grep -E '(error:|failed|Test Case .* failed)' test.log || true
+            exit 1
+          }
+
+      - name: Upload Test Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-test-log
+          path: test.log
 
       - name: Xcode Build (macOS Native)
         run: xcodebuild -scheme Maczy -destination "generic/platform=macOS" build

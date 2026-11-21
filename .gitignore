@@ -1,5 +1,14 @@
-# macOS
-.DS_Store
+/ARCHITECTURE.md
+/BACKLOG.md
+/README-IMPLEMENTATION.md
+!/docs/
+/.ai/
+/.docs/
+/PRD.md
+/SECURITY.md
+/UI-UX.md
+/AGENT.md
+/.DS_Store
 
 # Environment and secrets
 .env

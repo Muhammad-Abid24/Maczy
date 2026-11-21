@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Native macOS Dashboard adhering to OpenDesign specification:
-/// - 64px compact icon sidebar expanding on hover to 224px.
-/// - Full 7-module navigation.
+/// Native macOS Dashboard adhering faithfully to the approved OpenDesign project (70356bd0-f397-4d5e-983d-93a7952d85c6):
+/// - 64px compact icon sidebar expanding on hover/focus to 224px.
+/// - Full 7-module navigation plus Overview, Permissions, and Settings.
 /// - Distinctive Maczy branding and design tokens.
 public struct DashboardView: View {
     @ObservedObject var appState: AppState
@@ -23,7 +23,7 @@ public struct DashboardView: View {
             SidebarView(appState: appState)
                 .frame(width: appState.isSidebarExpanded ? MaczyDesignTokens.sidebarWideWidth : MaczyDesignTokens.sidebarCompactWidth)
                 .animation(.easeInOut(duration: 0.2), value: appState.isSidebarExpanded)
-                .background(Color(NSColor.windowBackgroundColor).opacity(0.85))
+                .background(Color(NSColor.windowBackgroundColor).opacity(0.92))
                 .onHover { isHovered in
                     appState.isSidebarExpanded = isHovered
                 }
@@ -32,34 +32,90 @@ public struct DashboardView: View {
 
             // MARK: - Detail Content Workspace
             VStack(alignment: .leading, spacing: 0) {
-                // Top Header
+                // Top Header Toolbar
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.selectedModule.displayName)
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                        Text(appState.selectedModule.summary)
-                            .font(.system(size: 13))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appState.selectedTab.displayName)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                        Text(toolbarSubtitle(for: appState.selectedTab))
+                            .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    StatusBadge(status: appState.status(for: appState.selectedModule))
+
+                    // Command Search Trigger
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 11))
+                        Text("Search actions")
+                            .font(.system(size: 11))
+                        Text("⌘K")
+                            .font(.system(size: 9, design: .monospaced))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.primary.opacity(0.08))
+                            .cornerRadius(4)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
                 }
                 .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                .padding(.vertical, 16)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.4))
 
                 Divider()
 
-                // Active Module Content Area
+                // Content View routing
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        ModuleDetailContent(module: appState.selectedModule)
+                        switch appState.selectedTab {
+                        case .overview:
+                            OverviewView(appState: appState)
+                        case .module(let module):
+                            switch module {
+                            case .captureAndRecording:
+                                CaptureDetailView(appState: appState)
+                            case .batteryGuardian:
+                                BatteryDetailView(appState: appState)
+                            case .dynamicNotch:
+                                NotchDetailView(appState: appState)
+                            case .smartUnlock:
+                                UnlockDetailView(appState: appState)
+                            case .updates:
+                                UpdatesDetailView(appState: appState)
+                            case .alwaysOn:
+                                AlwaysOnDetailView(appState: appState)
+                            case .systemCleaner:
+                                CleanerDetailView(appState: appState)
+                            }
+                        case .permissions:
+                            PermissionNoticeStrip()
+                        case .settings:
+                            Text("Maczy Preferences (Stored Locally)")
+                                .font(.system(size: 16, weight: .semibold))
+                                .padding()
+                        }
                     }
                     .padding(28)
                 }
             }
         }
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 840, minHeight: 640)
+    }
+
+    private func toolbarSubtitle(for tab: DashboardTab) -> String {
+        switch tab {
+        case .overview:
+            return "System readiness, module overview, and recent events."
+        case .module(let m):
+            return m.summary
+        case .permissions:
+            return "Local system permission audit and privacy policy."
+        case .settings:
+            return "Configure all Maczy surfaces on this Mac."
+        }
     }
 }
 
@@ -67,7 +123,7 @@ struct SidebarView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             // Brand Mark
             HStack(spacing: 12) {
                 ZStack {
@@ -97,117 +153,101 @@ struct SidebarView: View {
             Divider()
                 .padding(.vertical, 4)
 
+            // Overview Nav Item
+            SidebarNavItem(
+                title: "Overview",
+                icon: "square.grid.2x2.fill",
+                isSelected: appState.selectedTab == .overview,
+                isExpanded: appState.isSidebarExpanded
+            ) {
+                appState.selectedTab = .overview
+            }
+
+            Divider()
+                .padding(.vertical, 2)
+
             // Navigation Items for all 7 modules
             ForEach(MaczyModuleId.allCases) { module in
-                Button {
-                    appState.selectedModule = module
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: module.iconName)
-                            .font(.system(size: 16))
-                            .frame(width: 48, height: 38)
-                            .foregroundColor(appState.selectedModule == module ? MaczyDesignTokens.brandPurple : .primary)
-
-                        if appState.isSidebarExpanded {
-                            Text(module.displayName)
-                                .font(.system(size: 13, weight: appState.selectedModule == module ? .semibold : .regular))
-                                .foregroundColor(appState.selectedModule == module ? MaczyDesignTokens.brandPurple : .primary)
-                                .lineLimit(1)
-                            Spacer()
-                        }
-                    }
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(appState.selectedModule == module ? MaczyDesignTokens.brandPurpleSoft.opacity(0.8) : Color.clear)
-                    )
+                SidebarNavItem(
+                    title: module.displayName,
+                    icon: module.iconName,
+                    isSelected: appState.selectedTab == .module(module),
+                    isExpanded: appState.isSidebarExpanded
+                ) {
+                    appState.selectedTab = .module(module)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 6)
             }
 
             Spacer()
 
+            Divider()
+                .padding(.vertical, 2)
+
+            // Settings & Permissions Nav Items
+            SidebarNavItem(
+                title: "Permissions",
+                icon: "hand.raised.fill",
+                isSelected: appState.selectedTab == .permissions,
+                isExpanded: appState.isSidebarExpanded
+            ) {
+                appState.selectedTab = .permissions
+            }
+
+            SidebarNavItem(
+                title: "Settings",
+                icon: "gearshape.fill",
+                isSelected: appState.selectedTab == .settings,
+                isExpanded: appState.isSidebarExpanded
+            ) {
+                appState.selectedTab = .settings
+            }
+
             // Footer note
             if appState.isSidebarExpanded {
                 VStack(spacing: 2) {
-                    Text("Maczy Foundation v0.1.0")
+                    Text("Maczy v0.1.0")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                     Text("Apple Silicon Native")
                         .font(.system(size: 9))
                         .foregroundColor(.secondary.opacity(0.8))
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
             }
         }
     }
 }
 
-struct StatusBadge: View {
-    let status: ModuleStatus?
+struct SidebarNavItem: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let isExpanded: Bool
+    let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(status?.isImplemented == true ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
-                .frame(width: 8, height: 8)
-            Text(status?.runtimeState.rawValue ?? "Not Implemented")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.secondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(Color(NSColor.controlBackgroundColor))
-        )
-    }
-}
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15))
+                    .frame(width: 48, height: 36)
+                    .foregroundColor(isSelected ? MaczyDesignTokens.brandPurple : .primary)
 
-struct ModuleDetailContent: View {
-    let module: MaczyModuleId
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Notice card
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "info.circle.fill")
-                    .foregroundColor(module == .smartUnlock ? MaczyDesignTokens.statusRed : MaczyDesignTokens.statusOrange)
-                    .font(.system(size: 20))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(module == .smartUnlock ? "Critical Security Boundary" : "Phase Status: Foundation Scaffold")
-                        .font(.system(size: 14, weight: .semibold))
-
-                    if module == .smartUnlock {
-                        Text("Target: Unlocking actual macOS Lock Screen with camera-based face verification.\n\nCRITICAL REQUIREMENT: This is NOT an in-app privacy gate. Programmatic OS unlock requires rigorous technical feasibility research (MZ-023) and explicit Product Owner authorization before any implementation. FileVault, SIP, and system authentication protections are strictly preserved. Native Touch ID, password, and Apple Watch remain available under macOS control.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    } else if module == .batteryGuardian {
-                        Text("Target: Battery health monitoring and selectable charge thresholds (80%, 85%, 90%, 95%, 100%).\n\nCharge limit is strictly distinguished from true power-path bypass. Write controls are gated by MZ-014 backend verification.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    } else if module == .systemCleaner {
-                        Text("Target: Mole-inspired disk maintenance and optimization.\n\nOperates under strict non-destructive protocol: scan -> review -> explicit confirmation -> Trash. Automated deletion is strictly prohibited.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("This module is represented as a truthful foundation scaffold placeholder. Core logic is under development in subsequent tasks per BACKLOG.md.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
+                if isExpanded {
+                    Text(title)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                        .foregroundColor(isSelected ? MaczyDesignTokens.brandPurple : .primary)
+                        .lineLimit(1)
+                    Spacer()
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.8))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(module == .smartUnlock ? MaczyDesignTokens.statusRed.opacity(0.3) : MaczyDesignTokens.statusOrange.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? MaczyDesignTokens.brandPurpleSoft : Color.clear)
             )
         }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .accessibilityLabel(title)
     }
 }

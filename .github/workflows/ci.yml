@@ -78,8 +78,8 @@ jobs:
           name: swift-test-log
           path: test.log
 
-      - name: Xcode Build (macOS Native)
-        run: xcodebuild -scheme Maczy -destination "generic/platform=macOS" build
+      - name: Xcode Build (macOS Native Apple Silicon)
+        run: xcodebuild -scheme Maczy -destination "platform=macOS,arch=arm64" build
 
       - name: Ad-Hoc Code Signing Verification
         run: |

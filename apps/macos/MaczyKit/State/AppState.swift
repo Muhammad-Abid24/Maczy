@@ -204,10 +204,12 @@ public final class AppState: ObservableObject {
             result = CommandResult.success(message: msg)
 
         case .toggleNotchExpanded:
-            let isRunning = status(for: moduleId)?.runtimeState == .running
-            let next: ModuleRuntimeState = isRunning ? .idle : .running
-            transitionRuntime(moduleId: moduleId, to: next, message: "Notch toggled")
-            result = CommandResult.success(message: "Notch state toggled")
+            NotchCoordinator.shared.toggleExpansion()
+            let isExpanded = NotchCoordinator.shared.expansionState == .expanded
+            let next: ModuleRuntimeState = isExpanded ? .running : .idle
+            let msg = isExpanded ? "Dynamic Notch expanded" : "Dynamic Notch collapsed"
+            transitionRuntime(moduleId: moduleId, to: next, message: msg)
+            result = CommandResult.success(message: msg)
 
         case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
             // Strictly blocked by capability gate; unreachable if capability gate holds

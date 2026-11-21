@@ -18,6 +18,7 @@ public final class AppState: ObservableObject {
     public let capabilityRegistry: CapabilityRegistry
     public let eventBus: EventBus
     public let alwaysOnManager: AlwaysOnManager
+    public let updateManager: UpdateManager
 
     private var permissions: [MaczyPermission: PermissionState] = [:]
     private var lastDispatchedActions: [String: Date] = [:]
@@ -28,12 +29,14 @@ public final class AppState: ObservableObject {
         capabilityRegistry: CapabilityRegistry = CapabilityRegistry(),
         eventBus: EventBus = .shared,
         debounceInterval: TimeInterval = 0.2,
-        alwaysOnManager: AlwaysOnManager? = nil
+        alwaysOnManager: AlwaysOnManager? = nil,
+        updateManager: UpdateManager? = nil
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
         self.debounceInterval = debounceInterval
         self.alwaysOnManager = alwaysOnManager ?? AlwaysOnManager()
+        self.updateManager = updateManager ?? UpdateManager()
 
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
@@ -264,6 +267,15 @@ public final class AppState: ObservableObject {
 
         case .checkForUpdates:
             transitionRuntime(moduleId: moduleId, to: .running, message: "Checking for updates...")
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let newStatus = await self.updateManager.checkForUpdates()
+                self.transitionRuntime(
+                    moduleId: moduleId,
+                    to: .idle,
+                    message: newStatus.statusText
+                )
+            }
             result = CommandResult.success(message: "Update check initiated")
 
         case .startAwakeSession(let duration):

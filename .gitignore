@@ -32,3 +32,9 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+
+# Local AI / temporary doc cache
+/README-IMPLEMENTATION.md
+!/docs/
+/.ai/
+/.docs/

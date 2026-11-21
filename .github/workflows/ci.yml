@@ -79,7 +79,7 @@ jobs:
           path: test.log
 
       - name: Xcode Build (macOS Native Apple Silicon)
-        run: xcodebuild -scheme Maczy -destination "platform=macOS,arch=arm64" build
+        run: xcodebuild -scheme Maczy -destination "platform=macOS,arch=arm64" ONLY_ACTIVE_ARCH=YES ARCHS=arm64 build
 
       - name: Ad-Hoc Code Signing Verification
         run: |

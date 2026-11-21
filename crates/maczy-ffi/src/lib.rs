@@ -103,6 +103,22 @@ pub extern "C" fn maczy_free_string(s: *mut c_char) {
     }
 }
 
+/// Classifies a path for uninstaller leftover safety:
+/// 0 = Protected, 1 = ReviewRequired, 2 = Safe
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn maczy_classify_leftover_path(path: *const c_char) -> u32 {
+    if path.is_null() {
+        return 0;
+    }
+    let c_str = unsafe { std::ffi::CStr::from_ptr(path) };
+    if let Ok(s) = c_str.to_str() {
+        maczy_core::classify_leftover_path(s) as u32
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,5 +155,14 @@ mod tests {
         assert!(maczy_module_id(7).is_null());
         assert!(maczy_module_name(7).is_null());
         assert!(maczy_module_status_message(7).is_null());
+    }
+
+    #[test]
+    fn test_ffi_classify_leftover_path() {
+        let path = CString::new("/System/Library").unwrap();
+        assert_eq!(maczy_classify_leftover_path(path.as_ptr()), 0); // Protected
+
+        let safe_path = CString::new("/Users/test/Library/Caches/app").unwrap();
+        assert_eq!(maczy_classify_leftover_path(safe_path.as_ptr()), 2); // Safe
     }
 }

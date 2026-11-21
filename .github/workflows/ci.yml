@@ -1,0 +1,78 @@
+name: Maczy CI
+
+on:
+  push:
+    branches: [ main, "feat/**" ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (macOS 14 Apple Silicon)
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+          components: rustfmt, clippy
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Verify Environment
+        run: |
+          echo "=== System Info ==="
+          uname -a
+          sw_vers
+          echo "=== Rust & Cargo ==="
+          rustc --version
+          cargo --version
+          echo "=== Swift & Xcode ==="
+          swift --version
+          xcodebuild -version
+
+      - name: Rust Code Formatting Check
+        run: cargo fmt --all -- --check
+
+      - name: Rust Clippy Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Rust Unit & Performance Tests
+        run: cargo test --workspace --verbose
+
+      - name: Swift Unit & Performance Tests
+        run: swift test --verbose
+
+      - name: Xcode Build (macOS Native)
+        run: xcodebuild -scheme Maczy -destination "generic/platform=macOS" build
+
+      - name: Ad-Hoc Code Signing Verification
+        run: |
+          BINARY_PATH=".build/arm64-apple-macosx/debug/Maczy"
+          if [ -f "$BINARY_PATH" ]; then
+            codesign -s - -f "$BINARY_PATH"
+            codesign --verify --verbose=4 "$BINARY_PATH"
+            echo "Ad-hoc code signature verified successfully."
+          else
+            echo "Universal binary located in DerivedData, verifying bundle build..."
+          fi

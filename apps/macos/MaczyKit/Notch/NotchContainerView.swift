@@ -474,10 +474,14 @@ public struct NotchContainerView: View {
 
                 NotchActionButton(
                     icon: "cup.and.saucer.fill",
-                    title: "Always On",
-                    color: MaczyDesignTokens.statusOrange
+                    title: appState.alwaysOnManager.isActive ? "Awake (\(appState.alwaysOnManager.formattedRemainingTime))" : "Always On",
+                    color: appState.alwaysOnManager.isActive ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange
                 ) {
-                    _ = appState.dispatch(.startAwakeSession(durationMinutes: nil))
+                    if appState.alwaysOnManager.isActive {
+                        _ = appState.dispatch(.stopAwakeSession)
+                    } else {
+                        _ = appState.dispatch(.startAwakeSession(durationMinutes: nil))
+                    }
                 }
 
                 NotchActionButton(

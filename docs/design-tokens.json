@@ -1,0 +1,73 @@
+{
+  "sourceProject": {
+    "id": "70356bd0-f397-4d5e-983d-93a7952d85c6",
+    "name": "Maczy Premium Native Macos Design Execution",
+    "workspaceId": "h66hdfvyvh3s8av4scqv151t",
+    "entryFile": "index.html"
+  },
+  "geometry": {
+    "sidebarCompact": "64px",
+    "sidebarWide": "224px",
+    "toolbarHeight": "52px",
+    "radiusWindow": "13px",
+    "radiusPanel": "16px",
+    "radiusButton": "9px",
+    "minWindowWidth": "760px",
+    "minWindowHeight": "628px"
+  },
+  "colors": {
+    "light": {
+      "bg": "#ececf2",
+      "window": "rgba(249, 249, 252, 0.94)",
+      "chrome": "rgba(244, 244, 248, 0.82)",
+      "sidebar": "rgba(239, 238, 246, 0.94)",
+      "surface": "rgba(255, 255, 255, 0.78)",
+      "surfaceSolid": "#ffffff",
+      "text": "#1d1d22",
+      "textSecondary": "#555560",
+      "textMuted": "#797984",
+      "line": "rgba(48, 44, 64, 0.12)",
+      "brandPurple": "#6f4bf2",
+      "brandPurpleSoft": "#eee9ff",
+      "brandLavender": "#c6b7ff",
+      "statusGreen": "#2b9a62",
+      "statusGreenSoft": "#e8f6ee",
+      "statusOrange": "#c76b18",
+      "statusOrangeSoft": "#fff1df",
+      "statusRed": "#d4484b",
+      "statusRedSoft": "#fdebed",
+      "statusBlue": "#3978d0",
+      "statusBlueSoft": "#e8f1ff"
+    },
+    "dark": {
+      "bg": "#15141a",
+      "window": "rgba(32, 31, 38, 0.96)",
+      "chrome": "rgba(38, 37, 45, 0.88)",
+      "sidebar": "rgba(39, 37, 48, 0.97)",
+      "surface": "rgba(55, 53, 64, 0.76)",
+      "surfaceSolid": "#383640",
+      "text": "#f4f2f8",
+      "textSecondary": "#c4c0cc",
+      "textMuted": "#9893a2",
+      "line": "rgba(255, 255, 255, 0.10)",
+      "brandPurple": "#a98cff",
+      "brandPurpleSoft": "rgba(151, 116, 255, 0.17)",
+      "brandLavender": "#7f65ce",
+      "statusGreen": "#55c889",
+      "statusOrange": "#f0a050",
+      "statusRed": "#ff7478",
+      "statusBlue": "#79aef4"
+    }
+  },
+  "typography": {
+    "fontFamily": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif",
+    "headingHero": { "fontSize": "46px", "fontWeight": 720 },
+    "headingPanel": { "fontSize": "22px", "fontWeight": 680 },
+    "body": { "fontSize": "13px", "lineHeight": 1.42 },
+    "caption": { "fontSize": "11px", "fontWeight": 500 }
+  },
+  "animation": {
+    "sidebarEase": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "sidebarDuration": "200ms"
+  }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "maczy-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Audited C ABI / FFI boundary for Swift-Rust interop in Maczy"
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+maczy-core = { path = "../maczy-core" }
+
+[dev-dependencies]

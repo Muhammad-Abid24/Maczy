@@ -110,6 +110,30 @@ The Dashboard is designed in **OpenDesign**, with approved screens handed to eng
 
 The Menu Bar and Dynamic Notch use native macOS interaction conventions. Maczy's visual identity should be distinctive, accessible and lightweight, without copying another application's proprietary design assets.
 
+## Building Maczy
+
+### Prerequisites
+- macOS 14.0 Sonoma or newer on Apple Silicon (`arm64`).
+- Xcode 15+ / 16+ command line tools (`xcode-select --install`).
+- Rust 1.80+ (`rustc` and `cargo`).
+
+### Build & Test Core (Rust)
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+### Build & Test Application (Swift / Xcode)
+```bash
+# Using Swift Package Manager
+swift build
+swift test
+
+# Using xcodebuild
+xcodebuild -scheme Maczy -destination "generic/platform=macOS" build
+```
+
 ## Help build Maczy
 
 **Maczy is looking for contributors** who care about thoughtful Mac software.

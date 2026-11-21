@@ -86,11 +86,19 @@ public struct MenuBarView: View {
                     }
 
                     // 2. Battery Guardian
+                    let battery = appState.batterySnapshot
+                    let batteryStatusText: String = battery.isBatteryPresent
+                        ? "\(battery.stateOfCharge)% • \(battery.chargingState.rawValue)"
+                        : "Desktop (AC)"
+                    let batteryStatusColor: Color = battery.stateOfCharge > 20
+                        ? MaczyDesignTokens.statusGreen
+                        : MaczyDesignTokens.statusOrange
+
                     MenuBarModuleSection(
                         title: "Battery Guardian",
-                        icon: "battery.100.bolt",
-                        statusText: "80% Limit (Gated MZ-014)",
-                        statusColor: MaczyDesignTokens.statusGreen
+                        icon: battery.batteryIconName,
+                        statusText: batteryStatusText,
+                        statusColor: batteryStatusColor
                     ) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Charge Ceiling (80 - 100%):")

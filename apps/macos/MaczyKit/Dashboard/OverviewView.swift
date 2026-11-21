@@ -35,7 +35,7 @@ public struct OverviewView: View {
             }
 
             // MARK: - Recent Activity Panel
-            RecentActivityPanel()
+            RecentActivityPanel(appState: appState)
         }
     }
 }
@@ -298,6 +298,8 @@ struct ModuleCardView: View {
 
 /// Recent activity panel in Overview.
 struct RecentActivityPanel: View {
+    @ObservedObject var appState: AppState
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Recent System Activity")
@@ -305,7 +307,10 @@ struct RecentActivityPanel: View {
 
             HStack(spacing: 12) {
                 ActivityTile(icon: "camera.viewfinder", title: "Capture Ready", detail: "Area / Window / OCR ready")
-                ActivityTile(icon: "battery.100.bolt", title: "Battery Monitored", detail: "Power source: AC")
+                let battery = appState.batterySnapshot
+                let battTitle = battery.isBatteryPresent ? "Battery \(battery.stateOfCharge)%" : "Power: AC"
+                let battDetail = battery.isBatteryPresent ? "\(battery.powerSource.rawValue) • \(battery.chargingState.rawValue)" : "Desktop Mac"
+                ActivityTile(icon: battery.batteryIconName, title: battTitle, detail: battDetail)
                 ActivityTile(icon: "sparkles", title: "Cleaner Standby", detail: "Safe scan available")
             }
         }

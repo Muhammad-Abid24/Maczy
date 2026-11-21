@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Native macOS Menu Bar surface providing comprehensive controls and truthful status for all seven Maczy modules.
 public struct MenuBarView: View {
@@ -44,9 +44,14 @@ public struct MenuBarView: View {
             // Result banner (if any)
             if let result = viewModel.lastActionResult {
                 HStack(spacing: 6) {
-                    Image(systemName: result.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundColor(result.ok ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
-                        .font(.system(size: 11))
+                    Image(
+                        systemName: result.ok
+                            ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundColor(
+                        result.ok ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange
+                    )
+                    .font(.system(size: 11))
                     Text(result.message ?? (result.ok ? "Action executed" : "Action gated"))
                         .font(.system(size: 10))
                         .lineLimit(2)
@@ -54,7 +59,10 @@ public struct MenuBarView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(result.ok ? MaczyDesignTokens.statusGreen.opacity(0.1) : MaczyDesignTokens.statusOrange.opacity(0.1))
+                .background(
+                    result.ok
+                        ? MaczyDesignTokens.statusGreen.opacity(0.1)
+                        : MaczyDesignTokens.statusOrange.opacity(0.1))
 
                 Divider()
             }
@@ -66,31 +74,40 @@ public struct MenuBarView: View {
                     MenuBarModuleSection(
                         title: "Capture & Recording",
                         icon: "camera.viewfinder",
-                        statusText: appState.status(for: .captureAndRecording)?.runtimeState.rawValue ?? "Idle",
+                        statusText: appState.status(for: .captureAndRecording)?.runtimeState
+                            .rawValue ?? "Idle",
                         statusColor: MaczyDesignTokens.brandPurple
                     ) {
                         HStack(spacing: 6) {
                             MenuBarButton(title: "Area", shortcut: "⌘⇧1") {
-                                _ = viewModel.executeAction(.captureScreenshot(mode: "area"), on: appState)
+                                _ = viewModel.executeAction(
+                                    .captureScreenshot(mode: "area"), on: appState)
                             }
                             MenuBarButton(title: "Window", shortcut: "⌘⇧2") {
-                                _ = viewModel.executeAction(.captureScreenshot(mode: "window"), on: appState)
+                                _ = viewModel.executeAction(
+                                    .captureScreenshot(mode: "window"), on: appState)
                             }
                             MenuBarButton(title: "Full", shortcut: "⌘⇧3") {
-                                _ = viewModel.executeAction(.captureScreenshot(mode: "fullscreen"), on: appState)
+                                _ = viewModel.executeAction(
+                                    .captureScreenshot(mode: "fullscreen"), on: appState)
                             }
                             MenuBarButton(title: "Record", shortcut: "⌘⇧R") {
-                                _ = viewModel.executeAction(.startScreenRecording(target: "display", systemAudio: false, microphone: false), on: appState)
+                                _ = viewModel.executeAction(
+                                    .startScreenRecording(
+                                        target: "display", systemAudio: false, microphone: false),
+                                    on: appState)
                             }
                         }
                     }
 
                     // 2. Battery Guardian
                     let battery = appState.batterySnapshot
-                    let batteryStatusText: String = battery.isBatteryPresent
+                    let batteryStatusText: String =
+                        battery.isBatteryPresent
                         ? "\(battery.stateOfCharge)% • \(battery.chargingState.rawValue)"
                         : "Desktop (AC)"
-                    let batteryStatusColor: Color = battery.stateOfCharge > 20
+                    let batteryStatusColor: Color =
+                        battery.stateOfCharge > 20
                         ? MaczyDesignTokens.statusGreen
                         : MaczyDesignTokens.statusOrange
 
@@ -107,7 +124,8 @@ public struct MenuBarView: View {
                             HStack(spacing: 4) {
                                 ForEach([80, 85, 90, 95, 100], id: \.self) { pct in
                                     MenuBarButton(title: "\(pct)%") {
-                                        _ = viewModel.executeAction(.selectChargeLimit(percentage: pct), on: appState)
+                                        _ = viewModel.executeAction(
+                                            .selectChargeLimit(percentage: pct), on: appState)
                                     }
                                 }
                             }
@@ -118,7 +136,8 @@ public struct MenuBarView: View {
                     MenuBarModuleSection(
                         title: "Dynamic Notch",
                         icon: "macbook.gen2",
-                        statusText: appState.status(for: .dynamicNotch)?.runtimeState.rawValue ?? "Idle",
+                        statusText: appState.status(for: .dynamicNotch)?.runtimeState.rawValue
+                            ?? "Idle",
                         statusColor: MaczyDesignTokens.statusBlue
                     ) {
                         HStack {
@@ -140,9 +159,11 @@ public struct MenuBarView: View {
                         statusColor: MaczyDesignTokens.statusRed
                     ) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("macOS Lock Screen Face Unlock feasibility research. Native Touch ID/password fallback preserved.")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                            Text(
+                                "macOS Lock Screen Face Unlock feasibility research. Native Touch ID/password fallback preserved."
+                            )
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
                             Button("Check Feasibility Status") {
                                 _ = viewModel.executeAction(.triggerSessionUnlock, on: appState)
                             }
@@ -174,21 +195,29 @@ public struct MenuBarView: View {
                     MenuBarModuleSection(
                         title: "Always On",
                         icon: "sun.max.fill",
-                        statusText: appState.status(for: .alwaysOn)?.runtimeState.rawValue ?? "Idle",
-                        statusColor: MaczyDesignTokens.statusOrange
+                        statusText: appState.alwaysOnManager.isActive ? appState.alwaysOnManager.formattedRemainingTime : "Idle",
+                        statusColor: appState.alwaysOnManager.isActive ? MaczyDesignTokens.statusOrange : .secondary
                     ) {
                         HStack(spacing: 5) {
+                            MenuBarButton(title: "15m") {
+                                _ = viewModel.executeAction(.startAwakeSession(durationMinutes: 15), on: appState)
+                            }
                             MenuBarButton(title: "30m") {
-                                _ = viewModel.executeAction(.startAwakeSession(durationMinutes: 30), on: appState)
+                                _ = viewModel.executeAction(
+                                    .startAwakeSession(durationMinutes: 30), on: appState)
                             }
                             MenuBarButton(title: "1h") {
-                                _ = viewModel.executeAction(.startAwakeSession(durationMinutes: 60), on: appState)
+                                _ = viewModel.executeAction(
+                                    .startAwakeSession(durationMinutes: 60), on: appState)
                             }
-                            MenuBarButton(title: "Indefinite") {
-                                _ = viewModel.executeAction(.startAwakeSession(durationMinutes: nil), on: appState)
+                            MenuBarButton(title: "∞") {
+                                _ = viewModel.executeAction(
+                                    .startAwakeSession(durationMinutes: nil), on: appState)
                             }
-                            MenuBarButton(title: "Stop") {
-                                _ = viewModel.executeAction(.stopAwakeSession, on: appState)
+                            if appState.alwaysOnManager.isActive {
+                                MenuBarButton(title: "Stop") {
+                                    _ = viewModel.executeAction(.stopAwakeSession, on: appState)
+                                }
                             }
                         }
                     }

@@ -129,6 +129,16 @@ public final class AppState: ObservableObject {
         switch action {
         case .captureScreenshot(let mode):
             transitionRuntime(moduleId: moduleId, to: .running, message: "Capturing screenshot (\(mode))...")
+            CaptureCoordinator.shared.triggerCapture(mode: mode) { [weak self] captureResult in
+                Task { @MainActor in
+                    switch captureResult {
+                    case .success(let item):
+                        self?.transitionRuntime(moduleId: moduleId, to: .idle, message: "Captured \(Int(item.size.width))×\(Int(item.size.height))")
+                    case .failure(let error):
+                        self?.transitionRuntime(moduleId: moduleId, to: .idle, message: error.localizedDescription)
+                    }
+                }
+            }
             result = CommandResult.success(message: "Screenshot captured in \(mode) mode")
 
         case .startScreenRecording(let target, let sysAudio, let mic):

@@ -5,6 +5,8 @@ import SwiftUI
 public struct NotchContainerView: View {
     @ObservedObject var coordinator: NotchCoordinator
     @ObservedObject var appState: AppState = .shared
+    @ObservedObject var mediaCoordinator: MediaHUDCoordinator = .shared
+    @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
     @State private var isHovered: Bool = false
 
     public init(coordinator: NotchCoordinator) {
@@ -49,8 +51,63 @@ public struct NotchContainerView: View {
             coordinator.toggleExpansion()
         }) {
             HStack(spacing: 8) {
-                if profile.isVirtualIsland {
-                    // Virtual Island Pill
+                if let hud = systemHUD.activeHUD {
+                    // System HUD Level Toast (Volume or Brightness)
+                    HStack(spacing: 8) {
+                        Image(systemName: hud.iconName)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(MaczyDesignTokens.brandLavender)
+
+                        // Progress fill bar
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.2))
+                                    .frame(height: 5)
+                                Capsule()
+                                    .fill(MaczyDesignTokens.brandPurple)
+                                    .frame(width: max(0, geo.size.width * CGFloat(hud.level)), height: 5)
+                            }
+                            .frame(maxHeight: .infinity, alignment: .center)
+                        }
+
+                        Text("\(hud.percentage)%")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.95))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(MaczyDesignTokens.brandPurple.opacity(0.4), lineWidth: 1))
+
+                } else if mediaCoordinator.isMediaActive {
+                    // Now Playing compact pill
+                    HStack(spacing: 8) {
+                        Image(systemName: mediaCoordinator.currentTrack.isPlaying ? "waveform" : "pause.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(MaczyDesignTokens.brandLavender)
+
+                        Text("\(mediaCoordinator.currentTrack.artist) — \(mediaCoordinator.currentTrack.title)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Spacer()
+
+                        Image(systemName: mediaCoordinator.currentTrack.artworkIconName)
+                            .font(.system(size: 10))
+                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.92))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+
+                } else if profile.isVirtualIsland {
+                    // Virtual Island Pill with Battery
                     HStack(spacing: 8) {
                         Image(systemName: "macbook.gen2")
                             .font(.system(size: 11, weight: .semibold))
@@ -74,13 +131,10 @@ public struct NotchContainerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.92))
                     .clipShape(Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                    )
+                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+
                 } else {
                     // Physical Notch Integration
-                    // Extends black background matching physical notch silhouette
                     HStack {
                         Spacer()
                         Circle()
@@ -90,9 +144,7 @@ public struct NotchContainerView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black)
-                    .clipShape(
-                        RoundedCornerShape(radius: 12, corners: [.bottomLeft, .bottomRight])
-                    )
+                    .clipShape(RoundedCornerShape(radius: 12, corners: [.bottomLeft, .bottomRight]))
                 }
             }
         }
@@ -141,8 +193,86 @@ public struct NotchContainerView: View {
                 }
             }
 
-            Divider()
-                .background(Color.white.opacity(0.15))
+            // MARK: - Now Playing Card (Active Media)
+            if mediaCoordinator.isMediaActive {
+                VStack(spacing: 8) {
+                    HStack(spacing: 12) {
+                        // Artwork Icon Tile
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(MaczyDesignTokens.brandPurple.opacity(0.3))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: mediaCoordinator.currentTrack.artworkIconName)
+                                .foregroundColor(.white)
+                                .font(.system(size: 16))
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(mediaCoordinator.currentTrack.title)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            Text(mediaCoordinator.currentTrack.artist)
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.7))
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        // Playback Controls
+                        HStack(spacing: 12) {
+                            Button(action: { mediaCoordinator.previousTrack() }) {
+                                Image(systemName: "backward.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(action: { mediaCoordinator.togglePlayPause() }) {
+                                Image(systemName: mediaCoordinator.currentTrack.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(action: { mediaCoordinator.nextTrack() }) {
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    // Track Progress Bar
+                    HStack(spacing: 6) {
+                        Text(mediaCoordinator.currentTrack.formattedElapsed)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.5))
+
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(height: 3)
+                                Capsule()
+                                    .fill(MaczyDesignTokens.brandPurple)
+                                    .frame(width: max(0, geo.size.width * CGFloat(mediaCoordinator.currentTrack.progress)), height: 3)
+                            }
+                            .frame(maxHeight: .infinity, alignment: .center)
+                        }
+                        .frame(height: 10)
+
+                        Text(mediaCoordinator.currentTrack.formattedDuration)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(10)
+            }
 
             // Quick Actions Stage
             HStack(spacing: 10) {

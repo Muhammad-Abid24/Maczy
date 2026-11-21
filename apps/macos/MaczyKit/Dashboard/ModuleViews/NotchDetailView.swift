@@ -3,6 +3,8 @@ import SwiftUI
 public struct NotchDetailView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var coordinator: NotchCoordinator = .shared
+    @ObservedObject var mediaCoordinator: MediaHUDCoordinator = .shared
+    @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
 
     public init(appState: AppState) {
         self.appState = appState
@@ -19,7 +21,7 @@ public struct NotchDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Dynamic Notch")
                         .font(.system(size: 20, weight: .bold))
-                    Text("Contextual live activities, media HUD, and virtual island fallback")
+                    Text("Contextual live activities, media HUD, volume/brightness toasts, and virtual fallback")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
@@ -73,6 +75,95 @@ public struct NotchDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(MaczyDesignTokens.panelCornerRadius)
+
+            // MARK: - Now Playing & Media HUD Stage
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Now Playing Media HUD")
+                    .font(.system(size: 13, weight: .semibold))
+
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(MaczyDesignTokens.brandPurple.opacity(0.2))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: mediaCoordinator.currentTrack.artworkIconName)
+                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                            .font(.system(size: 18))
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(mediaCoordinator.currentTrack.title)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(mediaCoordinator.currentTrack.artist)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        Button(action: { mediaCoordinator.previousTrack() }) {
+                            Image(systemName: "backward.fill")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(action: { mediaCoordinator.togglePlayPause() }) {
+                            Image(systemName: mediaCoordinator.currentTrack.isPlaying ? "pause.fill" : "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(MaczyDesignTokens.brandPurple)
+
+                        Button(action: { mediaCoordinator.nextTrack() }) {
+                            Image(systemName: "forward.fill")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+            }
+
+            // MARK: - System HUD Sliders (Volume & Brightness)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("System HUD Feedback")
+                    .font(.system(size: 13, weight: .semibold))
+
+                HStack(spacing: 16) {
+                    // Volume Slider
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(.system(size: 11))
+                            Text("Volume: \(Int(systemHUD.currentVolume * 100))%")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        Slider(value: Binding(
+                            get: { systemHUD.currentVolume },
+                            set: { systemHUD.setVolume($0) }
+                        ), in: 0.0...1.0)
+                        .tint(MaczyDesignTokens.brandPurple)
+                    }
+
+                    // Brightness Slider
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "sun.max.fill")
+                                .font(.system(size: 11))
+                            Text("Brightness: \(Int(systemHUD.currentBrightness * 100))%")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        Slider(value: Binding(
+                            get: { systemHUD.currentBrightness },
+                            set: { systemHUD.setBrightness($0) }
+                        ), in: 0.0...1.0)
+                        .tint(MaczyDesignTokens.statusOrange)
+                    }
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+            }
 
             // MARK: - Display Mode Selector
             VStack(alignment: .leading, spacing: 10) {

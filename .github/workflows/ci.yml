@@ -61,7 +61,7 @@ jobs:
         run: cargo test --workspace --verbose
 
       - name: Swift Unit & Performance Tests
-        run: swift test --verbose
+        run: swift test
 
       - name: Xcode Build (macOS Native)
         run: xcodebuild -scheme Maczy -destination "generic/platform=macOS" build

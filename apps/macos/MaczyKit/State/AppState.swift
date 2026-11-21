@@ -10,6 +10,7 @@ public final class AppState: ObservableObject {
     public static let shared = AppState()
 
     @Published public var selectedModule: MaczyModuleId = .captureAndRecording
+    @Published public var selectedTab: DashboardTab = .overview
     @Published public var modules: [ModuleStatus] = []
     @Published public var isSidebarExpanded: Bool = false
 

@@ -9,6 +9,7 @@ public enum MaczyAction: Sendable {
 
     // Battery Guardian
     case selectChargeLimit(percentage: Int)
+    case refreshBatteryTelemetry
 
     // Dynamic Notch
     case toggleNotchExpanded
@@ -32,7 +33,7 @@ public enum MaczyAction: Sendable {
         switch self {
         case .captureScreenshot, .startScreenRecording, .stopScreenRecording:
             return .captureAndRecording
-        case .selectChargeLimit:
+        case .selectChargeLimit, .refreshBatteryTelemetry:
             return .batteryGuardian
         case .toggleNotchExpanded:
             return .dynamicNotch
@@ -53,6 +54,7 @@ public enum MaczyAction: Sendable {
         case .startScreenRecording: return "record_start"
         case .stopScreenRecording: return "record_stop"
         case .selectChargeLimit(let pct): return "charge_\(pct)"
+        case .refreshBatteryTelemetry: return "battery_refresh"
         case .toggleNotchExpanded: return "notch_toggle"
         case .requestFaceUnlockEnrollment: return "unlock_enroll"
         case .triggerSessionUnlock: return "unlock_trigger"

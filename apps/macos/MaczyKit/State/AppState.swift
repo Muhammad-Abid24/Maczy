@@ -13,6 +13,7 @@ public final class AppState: ObservableObject {
     @Published public var selectedTab: DashboardTab = .overview
     @Published public var modules: [ModuleStatus] = []
     @Published public var isSidebarExpanded: Bool = false
+    @Published public var batterySnapshot: BatterySnapshot = .desktopOrNotPresent
 
     public let capabilityRegistry: CapabilityRegistry
     public let eventBus: EventBus
@@ -57,6 +58,15 @@ public final class AppState: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 self?.handleAppEvent(event)
+            }
+            .store(in: &cancellables)
+
+        // Bind live battery telemetry monitor
+        self.batterySnapshot = BatteryMonitor.shared.currentSnapshot
+        BatteryMonitor.shared.$currentSnapshot
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newSnapshot in
+                self?.batterySnapshot = newSnapshot
             }
             .store(in: &cancellables)
     }
@@ -183,6 +193,15 @@ public final class AppState: ObservableObject {
                     message: "Charge limit must be 80, 85, 90, 95, or 100%"
                 )
             }
+
+        case .refreshBatteryTelemetry:
+            BatteryMonitor.shared.refresh()
+            let soc = BatteryMonitor.shared.currentSnapshot.stateOfCharge
+            let msg = BatteryMonitor.shared.currentSnapshot.isBatteryPresent
+                ? "Battery telemetry updated: \(soc)%"
+                : "Desktop Mac: AC Power active"
+            transitionRuntime(moduleId: moduleId, to: .idle, message: msg)
+            result = CommandResult.success(message: msg)
 
         case .toggleNotchExpanded:
             let isRunning = status(for: moduleId)?.runtimeState == .running

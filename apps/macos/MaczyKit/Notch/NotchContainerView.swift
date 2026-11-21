@@ -8,6 +8,7 @@ public struct NotchContainerView: View {
     @ObservedObject var mediaCoordinator: MediaHUDCoordinator = .shared
     @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
     @ObservedObject var liveCoordinator: LiveActivityCoordinator = .shared
+    @ObservedObject var clipboardManager: ClipboardManager = .shared
     @State private var isHovered: Bool = false
 
     public init(coordinator: NotchCoordinator) {
@@ -384,6 +385,16 @@ public struct NotchContainerView: View {
                     color: MaczyDesignTokens.statusOrange
                 ) {
                     _ = appState.dispatch(.startAwakeSession(durationMinutes: nil))
+                }
+
+                NotchActionButton(
+                    icon: "doc.on.clipboard",
+                    title: "Clip (\(clipboardManager.items.count))",
+                    color: MaczyDesignTokens.statusBlue
+                ) {
+                    if let first = clipboardManager.items.first {
+                        clipboardManager.copyToPasteboard(item: first)
+                    }
                 }
             }
 

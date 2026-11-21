@@ -3,9 +3,9 @@ import SwiftUI
 /// Security and Privacy Preferences view conforming to SECURITY.md policies.
 public struct SecurityPreferencesView: View {
     @ObservedObject var appState: AppState
+    @ObservedObject var clipboardManager: ClipboardManager = .shared
 
     @State private var telemetryDisabled = true
-    @State private var clipboardRetention = "Off"
     @State private var nonDestructiveTrash = true
     @State private var eddsaVerificationEnabled = true
     @State private var statusAlertMessage: String?
@@ -88,24 +88,24 @@ public struct SecurityPreferencesView: View {
                     HStack {
                         Text("Retention Window:")
                             .font(.system(size: 12))
-                        Picker("", selection: $clipboardRetention) {
-                            Text("Off (Disabled)").tag("Off")
-                            Text("1 Hour").tag("1h")
-                            Text("24 Hours").tag("24h")
-                            Text("7 Days").tag("7d")
+                        Picker("", selection: $clipboardManager.retentionPolicy) {
+                            ForEach(ClipboardRetentionPolicy.allCases, id: \.self) { policy in
+                                Text(policy.rawValue).tag(policy)
+                            }
                         }
                         .pickerStyle(.segmented)
-                        .frame(maxWidth: 300)
+                        .frame(maxWidth: 320)
                     }
 
                     HStack(spacing: 12) {
-                        Button("Clear Clipboard History Now") {
+                        Button("Clear History (\(clipboardManager.items.count) items)") {
+                            clipboardManager.clearHistory()
                             statusAlertMessage = "Clipboard history cleared."
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
 
-                        Text("Password managers and concealed items are ignored by default.")
+                        Text("Password managers (1Password, Bitwarden) and concealed items are ignored by default.")
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     }

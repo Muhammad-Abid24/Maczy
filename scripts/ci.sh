@@ -48,8 +48,8 @@ echo -e "\n${BLUE}[5/7] Running Swift Package Tests...${NC}"
 swift test
 echo -e "${GREEN}✓ All Swift tests passed.${NC}"
 
-echo -e "\n${BLUE}[6/7] Building with Xcode (xcodebuild)...${NC}"
-xcodebuild -scheme Maczy -destination "generic/platform=macOS" build -quiet
+echo -e "\n${BLUE}[6/7] Building with Xcode (xcodebuild arm64)...${NC}"
+xcodebuild -scheme Maczy -destination "platform=macOS,arch=arm64" build -quiet
 echo -e "${GREEN}✓ Xcode build succeeded.${NC}"
 
 echo -e "\n${BLUE}[7/7] Verifying Ad-Hoc Code Signing...${NC}"

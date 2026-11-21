@@ -17,16 +17,18 @@ public final class AppState: ObservableObject {
     public let eventBus: EventBus
 
     private var permissions: [MaczyPermission: PermissionState] = [:]
-    private var lastDispatchedTimes: [MaczyModuleId: Date] = [:]
-    private let debounceInterval: TimeInterval = 0.2
+    private var lastDispatchedActions: [String: Date] = [:]
+    public var debounceInterval: TimeInterval
     private var cancellables = Set<AnyCancellable>()
 
     public init(
         capabilityRegistry: CapabilityRegistry = CapabilityRegistry(),
-        eventBus: EventBus = .shared
+        eventBus: EventBus = .shared,
+        debounceInterval: TimeInterval = 0.2
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
+        self.debounceInterval = debounceInterval
 
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
@@ -78,13 +80,14 @@ public final class AppState: ObservableObject {
 
         // 0. Debounce / Idempotency Check
         let now = Date()
-        if let lastTime = lastDispatchedTimes[moduleId], now.timeIntervalSince(lastTime) < debounceInterval {
+        let debounceKey = action.debounceKey
+        if let lastTime = lastDispatchedActions[debounceKey], now.timeIntervalSince(lastTime) < debounceInterval {
             return CommandResult.failure(
                 errorCode: "ACTION_DEBOUNCED",
                 message: "Action ignored due to debounce threshold"
             )
         }
-        lastDispatchedTimes[moduleId] = now
+        lastDispatchedActions[debounceKey] = now
 
         // 1. Capability Gate
         guard let capability = capabilityRegistry.capability(for: moduleId), capability.isSupported else {

@@ -46,6 +46,23 @@ public enum MaczyAction: Sendable {
             return .systemCleaner
         }
     }
+
+    public var debounceKey: String {
+        switch self {
+        case .captureScreenshot(let mode): return "capture_\(mode)"
+        case .startScreenRecording: return "record_start"
+        case .stopScreenRecording: return "record_stop"
+        case .selectChargeLimit(let pct): return "charge_\(pct)"
+        case .toggleNotchExpanded: return "notch_toggle"
+        case .requestFaceUnlockEnrollment: return "unlock_enroll"
+        case .triggerSessionUnlock: return "unlock_trigger"
+        case .checkForUpdates: return "updates_check"
+        case .startAwakeSession: return "awake_start"
+        case .stopAwakeSession: return "awake_stop"
+        case .startCleanerScan: return "cleaner_start"
+        case .cancelCleanerScan: return "cleaner_cancel"
+        }
+    }
 }
 
 /// Output result of an executed command or action pipeline per ARCHITECTURE.md.

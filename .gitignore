@@ -17,6 +17,12 @@
 .env.*
 !.env.example
 
+# Build, Rust & Swift artifacts
+target/
+.build/
+DerivedData/
+.swiftpm/
+
 # Python & testing artifacts
 .vscode/
 __pycache__/

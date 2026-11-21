@@ -1,0 +1,214 @@
+import Foundation
+import SwiftUI
+import Combine
+
+/// Observable application state driving Dashboard and Menu Bar surfaces.
+/// Implements the strict ARCHITECTURE.md pipeline:
+/// Action -> Capability Gate -> Permission Gate -> Command -> Result -> State Update
+@MainActor
+public final class AppState: ObservableObject {
+    public static let shared = AppState()
+
+    @Published public var selectedModule: MaczyModuleId = .captureAndRecording
+    @Published public var modules: [ModuleStatus] = []
+    @Published public var isSidebarExpanded: Bool = false
+
+    public let capabilityRegistry: CapabilityRegistry
+    public let eventBus: EventBus
+
+    private var permissions: [MaczyPermission: PermissionState] = [:]
+    private var lastDispatchedTimes: [MaczyModuleId: Date] = [:]
+    private let debounceInterval: TimeInterval = 0.2
+    private var cancellables = Set<AnyCancellable>()
+
+    public init(
+        capabilityRegistry: CapabilityRegistry = CapabilityRegistry(),
+        eventBus: EventBus = .shared
+    ) {
+        self.capabilityRegistry = capabilityRegistry
+        self.eventBus = eventBus
+
+        // Initialize default permissions in fail-closed state
+        for perm in MaczyPermission.allCases {
+            self.permissions[perm] = .notDetermined
+        }
+
+        // Initialize all 7 modules
+        self.modules = MaczyModuleId.allCases.map { id in
+            let cap = capabilityRegistry.capability(for: id) ?? ModuleCapability.defaultFor(moduleId: id)
+            let isSupported = cap.isSupported
+            let runtime: ModuleRuntimeState = isSupported ? .idle : .blocked
+            let msg = isSupported ? "Ready for operation" : (cap.reason ?? "Capability blocked")
+
+            return ModuleStatus(
+                id: id,
+                isImplemented: isSupported,
+                runtimeState: runtime,
+                statusMessage: msg,
+                capability: cap
+            )
+        }
+
+        // Subscribe to event bus for surface synchronization
+        self.eventBus.events
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                self?.handleAppEvent(event)
+            }
+            .store(in: &cancellables)
+    }
+
+    public func status(for id: MaczyModuleId) -> ModuleStatus? {
+        modules.first { $0.id == id }
+    }
+
+    public func setPermissionState(_ permission: MaczyPermission, state: PermissionState) {
+        permissions[permission] = state
+    }
+
+    public func permissionState(_ permission: MaczyPermission) -> PermissionState {
+        permissions[permission] ?? .notDetermined
+    }
+
+    /// Primary Action Pipeline:
+    /// Action -> Capability Gate -> Permission Gate -> Command -> Result -> State Update
+    @discardableResult
+    public func dispatch(_ action: MaczyAction) -> CommandResult {
+        let moduleId = action.targetModuleId
+
+        // 0. Debounce / Idempotency Check
+        let now = Date()
+        if let lastTime = lastDispatchedTimes[moduleId], now.timeIntervalSince(lastTime) < debounceInterval {
+            return CommandResult.failure(
+                errorCode: "ACTION_DEBOUNCED",
+                message: "Action ignored due to debounce threshold"
+            )
+        }
+        lastDispatchedTimes[moduleId] = now
+
+        // 1. Capability Gate
+        guard let capability = capabilityRegistry.capability(for: moduleId), capability.isSupported else {
+            let reason = capabilityRegistry.capability(for: moduleId)?.reason
+                ?? "Module capability is not supported on this platform"
+            eventBus.publish(.actionGated(
+                moduleId: moduleId,
+                gateType: "capability",
+                reason: reason,
+                errorCode: "CAPABILITY_UNSUPPORTED"
+            ))
+            return CommandResult.failure(
+                errorCode: "CAPABILITY_UNSUPPORTED",
+                message: reason
+            )
+        }
+
+        // 2. Permission Gate
+        for reqPerm in capability.requiredPermissions {
+            let state = permissionState(reqPerm)
+            guard state.isGranted else {
+                let msg = "Operation requires \(reqPerm.displayName) permission (\(state.rawValue))"
+                eventBus.publish(.actionGated(
+                    moduleId: moduleId,
+                    gateType: "permission",
+                    reason: msg,
+                    errorCode: "PERMISSION_REQUIRED"
+                ))
+                return CommandResult.failure(
+                    errorCode: "PERMISSION_REQUIRED",
+                    message: msg
+                )
+            }
+        }
+
+        // 3. Command Execution & State Transition
+        let result: CommandResult
+        switch action {
+        case .captureScreenshot(let mode):
+            transitionRuntime(moduleId: moduleId, to: .running, message: "Capturing screenshot (\(mode))...")
+            result = CommandResult.success(message: "Screenshot captured in \(mode) mode")
+
+        case .startScreenRecording(let target, let sysAudio, let mic):
+            let msg = "Recording \(target) (audio: sys=\(sysAudio), mic=\(mic))"
+            transitionRuntime(moduleId: moduleId, to: .running, message: msg)
+            result = CommandResult.success(message: msg)
+
+        case .stopScreenRecording:
+            transitionRuntime(moduleId: moduleId, to: .idle, message: "Recording saved")
+            result = CommandResult.success(message: "Recording stopped and saved")
+
+        case .selectChargeLimit(let percentage):
+            if [80, 85, 90, 95, 100].contains(percentage) {
+                // Charge write controls are strictly gated by MZ-014 backend verification
+                result = CommandResult.failure(
+                    errorCode: "GATE_MZ_014",
+                    message: "Setting charge limit requires MZ-014 backend verification. Write controls gated."
+                )
+            } else {
+                result = CommandResult.failure(
+                    errorCode: "INVALID_PERCENTAGE",
+                    message: "Charge limit must be 80, 85, 90, 95, or 100%"
+                )
+            }
+
+        case .toggleNotchExpanded:
+            let isRunning = status(for: moduleId)?.runtimeState == .running
+            let next: ModuleRuntimeState = isRunning ? .idle : .running
+            transitionRuntime(moduleId: moduleId, to: next, message: "Notch toggled")
+            result = CommandResult.success(message: "Notch state toggled")
+
+        case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
+            // Strictly blocked by capability gate; unreachable if capability gate holds
+            result = CommandResult.failure(
+                errorCode: "GATE_MZ_023",
+                message: "Smart Unlock is gated by MZ-023 feasibility review"
+            )
+
+        case .checkForUpdates:
+            transitionRuntime(moduleId: moduleId, to: .running, message: "Checking for updates...")
+            result = CommandResult.success(message: "Update check initiated")
+
+        case .startAwakeSession(let duration):
+            let msg = duration.map { "Awake session active for \($0) minutes" } ?? "Awake session active indefinitely"
+            transitionRuntime(moduleId: moduleId, to: .running, message: msg)
+            result = CommandResult.success(message: msg)
+
+        case .stopAwakeSession:
+            transitionRuntime(moduleId: moduleId, to: .idle, message: "Awake session ended")
+            result = CommandResult.success(message: "Awake session stopped")
+
+        case .startCleanerScan:
+            transitionRuntime(moduleId: moduleId, to: .running, message: "Safe scan in progress...")
+            result = CommandResult.success(message: "Safe read-only scan started")
+
+        case .cancelCleanerScan:
+            transitionRuntime(moduleId: moduleId, to: .idle, message: "Scan cancelled")
+            result = CommandResult.success(message: "Scan cancelled")
+        }
+
+        // 4. Publish Event
+        eventBus.publish(.commandExecuted(moduleId: moduleId, result: result))
+        return result
+    }
+
+    private func transitionRuntime(
+        moduleId: MaczyModuleId,
+        to newRuntime: ModuleRuntimeState,
+        message: String
+    ) {
+        if let idx = modules.firstIndex(where: { $0.id == moduleId }) {
+            let previous = modules[idx].runtimeState
+            modules[idx].runtimeState = newRuntime
+            modules[idx].statusMessage = message
+
+            eventBus.publish(.moduleRuntimeChanged(
+                moduleId: moduleId,
+                previous: previous,
+                current: newRuntime
+            ))
+        }
+    }
+
+    private func handleAppEvent(_ event: AppEvent) {
+        // Handle cross-surface updates and logging
+    }
+}

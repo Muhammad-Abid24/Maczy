@@ -19,6 +19,7 @@ public final class AppState: ObservableObject {
     public let eventBus: EventBus
     public let alwaysOnManager: AlwaysOnManager
     public let updateManager: UpdateManager
+    public let cleanerManager: CleanerManager
 
     private var permissions: [MaczyPermission: PermissionState] = [:]
     private var lastDispatchedActions: [String: Date] = [:]
@@ -30,13 +31,15 @@ public final class AppState: ObservableObject {
         eventBus: EventBus = .shared,
         debounceInterval: TimeInterval = 0.2,
         alwaysOnManager: AlwaysOnManager? = nil,
-        updateManager: UpdateManager? = nil
+        updateManager: UpdateManager? = nil,
+        cleanerManager: CleanerManager? = nil
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
         self.debounceInterval = debounceInterval
         self.alwaysOnManager = alwaysOnManager ?? AlwaysOnManager()
         self.updateManager = updateManager ?? UpdateManager()
+        self.cleanerManager = cleanerManager ?? CleanerManager()
 
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
@@ -295,10 +298,12 @@ public final class AppState: ObservableObject {
             result = CommandResult.success(message: "Awake session stopped")
 
         case .startCleanerScan:
+            cleanerManager.startScan()
             transitionRuntime(moduleId: moduleId, to: .running, message: "Safe scan in progress...")
             result = CommandResult.success(message: "Safe read-only scan started")
 
         case .cancelCleanerScan:
+            cleanerManager.cancelScan()
             transitionRuntime(moduleId: moduleId, to: .idle, message: "Scan cancelled")
             result = CommandResult.success(message: "Scan cancelled")
         }

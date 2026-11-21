@@ -81,8 +81,6 @@ The project is in **planning**, so these are proposed milestones—not completed
 - [ ] **Security & delivery:** Smart Unlock validation, verified auto-update pipeline, packaged community builds
 - [ ] **Compatibility & release:** device testing, permissions, signing, usability, security and licensing review
 
-Track implementation in [BACKLOG.md](BACKLOG.md), [TASK.md](TASK.md), and [KANBAN.md](KANBAN.md). A checked box requires verification—not just an implementation claim.
-
 ## Technical reality, not marketing promises
 
 Some features need careful platform-specific work:

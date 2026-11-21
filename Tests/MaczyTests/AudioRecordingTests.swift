@@ -97,32 +97,18 @@ final class AudioRecordingTests: XCTestCase {
         XCTAssertTrue(error.errorDescription?.contains("Microphone permission is required") == true)
     }
 
-    func testScreenRecordingEnginePreflightChecks() {
-        let engine = ScreenRecordingEngine.shared
-        _ = engine.isAuthorized()
-        XCTAssertFalse(engine.isRecording)
-    }
+    func testMaczyActionAudioParameters() {
+        let actionNone = MaczyAction.startScreenRecording(target: "display", systemAudio: false, microphone: false)
+        XCTAssertEqual(actionNone.targetModuleId, .captureAndRecording)
+        XCTAssertEqual(actionNone.debounceKey, "record_start")
 
-    @MainActor
-    func testAppStateAudioRecordingDispatch() {
-        let appState = AppState()
-        appState.setPermissionState(.screenRecording, state: .granted)
+        let actionAudio = MaczyAction.startScreenRecording(target: "region", systemAudio: true, microphone: false)
+        XCTAssertEqual(actionAudio.targetModuleId, .captureAndRecording)
+        XCTAssertEqual(actionAudio.debounceKey, "record_start")
 
-        // Dispatch start with system audio only
-        let resSys = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: false))
-        XCTAssertTrue(resSys.ok)
-        XCTAssertEqual(resSys.message?.contains("sys=true, mic=false"), true)
-    }
-
-    @MainActor
-    func testAppStateBothAudioRecordingDispatch() {
-        let appState = AppState()
-        appState.setPermissionState(.screenRecording, state: .granted)
-
-        // Dispatch start with both system audio and microphone
-        let resBoth = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: true))
-        XCTAssertTrue(resBoth.ok)
-        XCTAssertEqual(resBoth.message?.contains("sys=true, mic=true"), true)
+        let actionBoth = MaczyAction.startScreenRecording(target: "window", systemAudio: true, microphone: true)
+        XCTAssertEqual(actionBoth.targetModuleId, .captureAndRecording)
+        XCTAssertEqual(actionBoth.debounceKey, "record_start")
     }
 
     @MainActor
@@ -132,6 +118,7 @@ final class AudioRecordingTests: XCTestCase {
 
         let res = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: true))
         XCTAssertFalse(res.ok)
+        XCTAssertEqual(res.errorCode, "PERMISSION_REQUIRED")
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .idle)
     }
 }

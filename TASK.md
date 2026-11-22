@@ -1,21 +1,27 @@
 # TASK.md — Current Antigravity Task
 
-## Active selection: MZ-015-FIX-NOTCH-SHAPE (DONE) — Dynamic Notch Expansion Shape & Click-Outside Dismissal
-**Objective:** Update the Dynamic Notch expansion card shape to be flush at the top with rounded bottom corners (matching hardware notch bezel design), remove the top close button, and implement intuitive click-outside dismissal via global and local NSEvent monitoring.
+## Active selection: MZ-015-CUSTOM-DIMENSIONS (DONE) — Customizable Dynamic Notch Dimensions (Width & Height)
+**Objective:** Implement native macOS functionality allowing users to adjust and customize the width and height of the Dynamic Notch for both compact silhouette (idle / floating pill) and expanded HUD card, with live responsive resizing, persistent settings, reset-to-defaults capabilities, and domain action dispatch.
 
 ### Completed this task
-- [x] **Top-Flush Rounded Bottom Card Geometry**:
-  - Replaced full 4-corner rounded rectangle with `UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous)`.
-  - Expansion HUD now seamlessly connects with the top bezel and hardware notch cutout.
-- [x] **Close Button Removal**:
-  - Removed `xmark.circle.fill` close button from the top header in `NotchContainerView.swift`.
-  - Preserved battery telemetry badge and status indicators.
-- [x] **Click-Outside Dismissal**:
-  - Implemented `startOutsideClickMonitoring` in `NotchOverlayWindowController.swift` with `NSEvent.addGlobalMonitorForEvents` and `NSEvent.addLocalMonitorForEvents`.
-  - Automatically collapses expansion HUD to `.compact` state whenever a click occurs outside `panel.frame`.
-  - Added clean lifecycle management (`stopOutsideClickMonitoring`) on collapse and window hide.
+- [x] **Geometry Engine Dynamic Sizing**:
+  - Enhanced `NotchGeometry.detectProfile` with `customCompactSize: CGSize?` and `customExpandedSize: CGSize?`.
+  - Centers and aligns the notch rect flush with the screen top/notch cutout using custom width and height across virtual, auto, and physical modes.
+- [x] **Coordinator State & UserDefaults Persistence**:
+  - Added `@Published customCompactWidth`, `customCompactHeight`, `customExpandedWidth`, `customExpandedHeight` to `NotchCoordinator`.
+  - Automatically loads and persists values via `UserDefaults` keys (`maczy.notch.customCompactWidth`, etc.).
+  - Added computed properties (`currentCompactWidth`, `currentCompactHeight`, etc.) and `resetDimensionsToDefault()`.
+  - Immediate `updateProfile()` call triggers live panel resizing in real-time.
+- [x] **Native Dashboard UI Controls**:
+  - Implemented interactive "Notch Dimensions & Scaling" card in `NotchDetailView.swift`.
+  - Compact width slider (140–600 pt) & height slider (24–64 pt).
+  - Expanded width slider (320–750 pt) & height slider (120–360 pt).
+  - Live dimension indicators (`X × Y pt`) and "Reset to Defaults" button.
+- [x] **Domain Actions & AppState**:
+  - Added `MaczyAction.setNotchDimensions` and `MaczyAction.resetNotchDimensions`.
+  - Handled in `AppState.dispatch(...)` for programmatic and testable control.
 - [x] **Unit & Integration Tests**:
-  - Added `testOutsideClickMonitoringLifecycleAndDismissal` to `Tests/MaczyTests/NotchGeometryTests.swift`.
-  - Verified 198 Swift tests + 20 Rust tests pass (100% green).
+  - Added `testCustomNotchDimensionsDetection`, `testNotchCoordinatorCustomDimensionsLifecycle`, and `testAppStateNotchDimensionsActionDispatch` in `Tests/MaczyTests/NotchGeometryTests.swift`.
+  - Verified 201 Swift tests + 20 Rust tests pass (100% green).
 - [x] **Branch & Push**:
-  - Pushed strictly to `fix/dynamic-notch-layout-position` (NEVER to `main`).
+  - Committed and pushed strictly to feature branch `fix/dynamic-notch-layout-position` (NEVER to `main`).

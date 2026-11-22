@@ -13,6 +13,8 @@ public enum MaczyAction: Sendable {
 
     // Dynamic Notch & Window Snap
     case toggleNotchExpanded
+    case setNotchDimensions(compactWidth: Double?, compactHeight: Double?, expandedWidth: Double?, expandedHeight: Double?)
+    case resetNotchDimensions
     case snapActiveWindow(preset: WindowSnapPreset)
     case undoWindowSnap
     case lockScreen
@@ -38,7 +40,7 @@ public enum MaczyAction: Sendable {
             return .captureAndRecording
         case .selectChargeLimit, .refreshBatteryTelemetry:
             return .batteryGuardian
-        case .toggleNotchExpanded, .snapActiveWindow, .undoWindowSnap, .lockScreen:
+        case .toggleNotchExpanded, .setNotchDimensions, .resetNotchDimensions, .snapActiveWindow, .undoWindowSnap, .lockScreen:
             return .dynamicNotch
         case .requestFaceUnlockEnrollment, .triggerSessionUnlock:
             return .smartUnlock
@@ -59,6 +61,8 @@ public enum MaczyAction: Sendable {
         case .selectChargeLimit(let pct): return "charge_\(pct)"
         case .refreshBatteryTelemetry: return "battery_refresh"
         case .toggleNotchExpanded: return "notch_toggle"
+        case .setNotchDimensions: return "notch_dims"
+        case .resetNotchDimensions: return "notch_reset_dims"
         case .snapActiveWindow(let preset): return "snap_\(preset.rawValue)"
         case .undoWindowSnap: return "snap_undo"
         case .lockScreen: return "system_lock"

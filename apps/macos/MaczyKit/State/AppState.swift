@@ -246,6 +246,21 @@ public final class AppState: ObservableObject {
             transitionRuntime(moduleId: moduleId, to: next, message: msg)
             result = CommandResult.success(message: msg)
 
+        case let .setNotchDimensions(compactWidth, compactHeight, expandedWidth, expandedHeight):
+            if let w = compactWidth { NotchCoordinator.shared.currentCompactWidth = CGFloat(w) }
+            if let h = compactHeight { NotchCoordinator.shared.currentCompactHeight = CGFloat(h) }
+            if let w = expandedWidth { NotchCoordinator.shared.currentExpandedWidth = CGFloat(w) }
+            if let h = expandedHeight { NotchCoordinator.shared.currentExpandedHeight = CGFloat(h) }
+            let msg = "Dynamic Notch dimensions updated"
+            transitionRuntime(moduleId: moduleId, to: .running, message: msg)
+            result = CommandResult.success(message: msg)
+
+        case .resetNotchDimensions:
+            NotchCoordinator.shared.resetDimensionsToDefault()
+            let msg = "Dynamic Notch dimensions reset to defaults"
+            transitionRuntime(moduleId: moduleId, to: .idle, message: msg)
+            result = CommandResult.success(message: msg)
+
         case .snapActiveWindow(let preset):
             let snapResult = WindowSnapManager.shared.snapActiveWindow(to: preset)
             if snapResult.ok {

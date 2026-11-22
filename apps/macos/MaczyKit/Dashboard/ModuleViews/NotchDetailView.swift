@@ -216,6 +216,140 @@ public struct NotchDetailView: View {
                 .pickerStyle(.segmented)
             }
 
+            // MARK: - Notch Dimensions & Scaling (Width & Height Customization)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Notch Dimensions & Scaling")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Customize dynamic notch width and height for both compact silhouette and expanded card.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if coordinator.hasCustomDimensions {
+                        Button("Reset to Defaults") {
+                            coordinator.resetDimensionsToDefault()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+
+                VStack(spacing: 14) {
+                    // Compact Silhouette Dimensions
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Compact Silhouette (Idle / Floating Pill)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(Int(coordinator.currentCompactWidth)) × \(Int(coordinator.currentCompactHeight)) pt")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(MaczyDesignTokens.brandPurple)
+                        }
+
+                        HStack(spacing: 16) {
+                            // Width Slider
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: "arrow.left.and.right")
+                                        .font(.system(size: 10))
+                                    Text("Width: \(Int(coordinator.currentCompactWidth)) pt")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                Slider(
+                                    value: Binding(
+                                        get: { coordinator.currentCompactWidth },
+                                        set: { coordinator.currentCompactWidth = $0 }
+                                    ),
+                                    in: 140...600,
+                                    step: 5
+                                )
+                                .tint(MaczyDesignTokens.brandPurple)
+                            }
+
+                            // Height Slider
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: "arrow.up.and.down")
+                                        .font(.system(size: 10))
+                                    Text("Height: \(Int(coordinator.currentCompactHeight)) pt")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                Slider(
+                                    value: Binding(
+                                        get: { coordinator.currentCompactHeight },
+                                        set: { coordinator.currentCompactHeight = $0 }
+                                    ),
+                                    in: 24...64,
+                                    step: 1
+                                )
+                                .tint(MaczyDesignTokens.brandLavender)
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    // Expanded Card Dimensions
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Expanded HUD Card")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(Int(coordinator.currentExpandedWidth)) × \(Int(coordinator.currentExpandedHeight)) pt")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(MaczyDesignTokens.brandPurple)
+                        }
+
+                        HStack(spacing: 16) {
+                            // Width Slider
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: "arrow.left.and.right")
+                                        .font(.system(size: 10))
+                                    Text("Width: \(Int(coordinator.currentExpandedWidth)) pt")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                Slider(
+                                    value: Binding(
+                                        get: { coordinator.currentExpandedWidth },
+                                        set: { coordinator.currentExpandedWidth = $0 }
+                                    ),
+                                    in: 320...750,
+                                    step: 10
+                                )
+                                .tint(MaczyDesignTokens.brandPurple)
+                            }
+
+                            // Height Slider
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: "arrow.up.and.down")
+                                        .font(.system(size: 10))
+                                    Text("Height: \(Int(coordinator.currentExpandedHeight)) pt")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                Slider(
+                                    value: Binding(
+                                        get: { coordinator.currentExpandedHeight },
+                                        set: { coordinator.currentExpandedHeight = $0 }
+                                    ),
+                                    in: 120...360,
+                                    step: 5
+                                )
+                                .tint(MaczyDesignTokens.brandLavender)
+                            }
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+            }
+
             // MARK: - Overlay Controls
             VStack(alignment: .leading, spacing: 10) {
                 Text("Interactive Controls")

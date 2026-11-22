@@ -49,9 +49,11 @@ public final class CaptureExportManager: @unchecked Sendable {
         return "\(prefix)_\(dateString).\(format.rawValue)"
     }
 
-    /// Encodes a CGImage to binary data for a specified format.
+    /// Encodes a CGImage to binary data for a specified format preserving Retina density metadata.
     public func encodeImage(_ cgImage: CGImage, format: ImageExportFormat = .png, compressionQuality: Double = 0.9) -> Data? {
         let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        bitmapRep.size = NSSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
         switch format {
         case .png:
             return bitmapRep.representation(using: .png, properties: [:])

@@ -4,6 +4,16 @@ import XCTest
 @MainActor
 final class AlwaysOnTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: "maczy_always_on_mode")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "maczy_always_on_mode")
+        super.tearDown()
+    }
+
     func testAlwaysOnPresetInitializationAndDurations() {
         let p15 = AlwaysOnPreset(minutes: 15)
         XCTAssertEqual(p15, .fifteenMinutes)
@@ -179,5 +189,32 @@ final class AlwaysOnTests: XCTestCase {
         XCTAssertTrue(stopResult.ok)
         XCTAssertFalse(appState.alwaysOnManager.isActive)
         XCTAssertEqual(appState.status(for: .alwaysOn)?.runtimeState, .idle)
+    }
+
+    func testSystemOnlyModePersistenceAndDirectStart() {
+        let key = "maczy_always_on_mode"
+        UserDefaults.standard.removeObject(forKey: key)
+
+        let mock = MockPowerAssertionProvider()
+        let manager = AlwaysOnManager(powerProvider: mock)
+        XCTAssertEqual(manager.currentMode, .systemAndDisplay)
+
+        manager.setMode(.systemOnly)
+        XCTAssertEqual(manager.currentMode, .systemOnly)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: key), AlwaysOnMode.systemOnly.rawValue)
+
+        // Starting a session with default mode should use systemOnly
+        let started = manager.startSession(preset: .indefinite)
+        XCTAssertTrue(started)
+        XCTAssertTrue(manager.isActive)
+        XCTAssertEqual(mock.lastCreatedType, AlwaysOnMode.systemOnly.assertionType)
+        XCTAssertEqual(manager.activeSession?.mode, .systemOnly)
+
+        // Verify restoration on fresh manager instance
+        let restoredManager = AlwaysOnManager(powerProvider: mock)
+        XCTAssertEqual(restoredManager.currentMode, .systemOnly)
+
+        // Clean up
+        UserDefaults.standard.removeObject(forKey: key)
     }
 }

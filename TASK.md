@@ -1,27 +1,22 @@
 # TASK.md — Current Antigravity Task
 
-## Active selection: FEAT-RECORDING-PREVIEW-AND-MIC-LEVEL (DONE) — Screen Recording Preview HUD & Live Microphone Voice Meter
-**Objective:** Present an interactive floating preview HUD upon video recording completion (with thumbnail, Play, Reveal in Finder, and in-dashboard recent video card), and add a real-time live microphone voice level meter when microphone audio is enabled.
+## Active selection: FIX-ALWAYS-ON-SYSTEM-ONLY-MODE (DONE) — Always On System Only Mode Activation & UI Sync
+**Objective:** Fix the "System Only" mode in Always On module so that toggling it updates the UI immediately, persists across sessions, allows starting an awake session directly with the active mode, and correctly manages IOPM assertions on macOS.
 
 ### Completed this task
-- [x] **Switched to Main & Pulled**: Checked out `main` and pulled latest (`99a94f1`).
-- [x] **Created New Feature Branch**: Created branch `feat/recording-preview-and-mic-level` directly off updated `main`.
-- [x] **Floating Recording Preview HUD (`RecordingPreviewHUD.swift`)**:
-  - Implemented floating `NSPanel` at `maximumWindow` level on screen bottom-right above dock.
-  - Video thumbnail frame extraction via `AVAssetImageGenerator`.
-  - Play overlay badge, filename, "Play" button (`NSWorkspace.shared.open`), and "Reveal in Finder" button (`activateFileViewerSelecting`).
-  - Auto-dismiss after 8 seconds with smooth alpha animations.
-- [x] **In-Dashboard Recent Recording Preview Card (`CaptureDetailView.swift`)**:
-  - Added video thumbnail preview, filename, "Play Video", and "Reveal in Finder" buttons when `appState.lastRecordedVideoURL` exists.
-- [x] **Real-Time Live Microphone Voice Preview (`MicrophoneLevelMonitor.swift`)**:
-  - Created `MicrophoneLevelMonitor` using `AVAudioEngine` tapping inputNode with RMS level calculation.
-  - Added visualizer view `MicrophoneLivePreviewView` with 24 dynamic multi-colored equalizer bars (green/orange/red), voice activity dot, and percentage level.
-  - Auto-starts monitoring when Microphone Voice is toggled ON, and auto-stops when toggled OFF.
-- [x] **Integration & State Pipeline (`AppState.swift`, `RecordingCoordinator.swift`)**:
-  - Added `@Published public var lastRecordedVideoURL: URL?` and `@Published public var lastRecordedVideoThumbnail: CGImage?` to `AppState`.
-  - Triggered `RecordingPreviewHUD.shared.present(videoURL: savedURL)` upon recording completion in `RecordingCoordinator.stopRecording`.
-- [x] **Validation & CI**:
-  - Added unit tests in `RecordingTests.swift` and `AudioRecordingTests.swift`.
-  - Ran `./scripts/ci.sh`: all 20 Rust unit + perf tests and 218 Swift unit tests passed with 0 errors and 0 warnings, followed by successful Xcode arm64 build and ad-hoc code sign verification.
+- [x] **Switched to Main & Pulled**: Checked out `main` and pulled latest upstream commits.
+- [x] **Created New Branch**: Created branch `fix/always-on-system-only-mode` directly off updated `main`.
+- [x] **Direct SwiftUI Observation in AlwaysOnDetailView**:
+  - Bound `alwaysOnManager` as `@ObservedObject private var alwaysOnManager: AlwaysOnManager` to ensure SwiftUI automatically re-renders when `currentMode`, `isActive`, or other state changes.
+  - Added primary "Start Always On" action button in the idle hero card showing the selected mode (`Mode ready: ...`).
+- [x] **Mode Persistence & Management (`AlwaysOnManager.swift`)**:
+  - Persisted user's selected mode (`AlwaysOnMode`) to `UserDefaults` under key `maczy_always_on_mode`.
+  - Automatically loads and applies saved mode on `AlwaysOnManager` initialization.
+  - Ensures mode changes correctly update `activeSession?.mode` and switch the underlying IOPM power assertion (`kIOPMAssertionTypePreventUserIdleSystemSleep` vs `kIOPMAssertionTypePreventUserIdleDisplaySleep`).
+- [x] **MenuBar Quick Mode Toggles (`MenuBarView.swift`)**:
+  - Added segmented mode switcher ("Display & System" vs "System Only") directly inside the Menu Bar popover.
+- [x] **Unit Testing & Verification**:
+  - Added `testSystemOnlyModePersistenceAndDirectStart()` in `AlwaysOnTests.swift` verifying persistence, dynamic assertion switching, and default initialization.
+  - Validated with `./scripts/ci.sh`: all 20 Rust unit + perf tests and 219 Swift tests passed with 0 errors and 0 warnings, followed by Xcode build and ad-hoc codesign.
 - [x] **Branch & Push**:
-  - Committed and pushed strictly to `feat/recording-preview-and-mic-level`.
+  - Committed and pushed strictly to branch `fix/always-on-system-only-mode`.

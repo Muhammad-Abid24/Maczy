@@ -33,6 +33,7 @@ public enum MaczyAction: Sendable {
     // System Cleaner
     case startCleanerScan
     case cancelCleanerScan
+    case executeCleanerPurge(confirmed: Bool)
 
     public var targetModuleId: MaczyModuleId {
         switch self {
@@ -48,7 +49,7 @@ public enum MaczyAction: Sendable {
             return .updates
         case .startAwakeSession, .stopAwakeSession:
             return .alwaysOn
-        case .startCleanerScan, .cancelCleanerScan:
+        case .startCleanerScan, .cancelCleanerScan, .executeCleanerPurge:
             return .systemCleaner
         }
     }
@@ -73,6 +74,7 @@ public enum MaczyAction: Sendable {
         case .stopAwakeSession: return "awake_stop"
         case .startCleanerScan: return "cleaner_start"
         case .cancelCleanerScan: return "cleaner_cancel"
+        case .executeCleanerPurge(let confirmed): return "cleaner_purge_\(confirmed)"
         }
     }
 }

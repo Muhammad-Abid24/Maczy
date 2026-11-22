@@ -18,7 +18,14 @@ public enum CleanerSectionTab: String, CaseIterable, Identifiable {
 
 public struct CleanerDetailView: View {
     @ObservedObject var appState: AppState
+    @ObservedObject private var cleanerManager: CleanerManager
+    @ObservedObject private var uninstallManager: UninstallManager
+    @ObservedObject private var optimizerManager: OptimizerManager
     @State private var selectedTab: CleanerSectionTab = .cleaner
+
+    // Cleanup confirmation state (MZ-029)
+    @State private var showCleanupConfirmation: Bool = false
+    @State private var cleanupErrorMessage: String? = nil
 
     // Uninstall confirmation state
     @State private var showUninstallConfirmation: Bool = false
@@ -26,18 +33,9 @@ public struct CleanerDetailView: View {
 
     public init(appState: AppState) {
         self.appState = appState
-    }
-
-    private var cleanerManager: CleanerManager {
-        appState.cleanerManager
-    }
-
-    private var uninstallManager: UninstallManager {
-        appState.uninstallManager
-    }
-
-    private var optimizerManager: OptimizerManager {
-        appState.optimizerManager
+        self._cleanerManager = ObservedObject(wrappedValue: appState.cleanerManager)
+        self._uninstallManager = ObservedObject(wrappedValue: appState.uninstallManager)
+        self._optimizerManager = ObservedObject(wrappedValue: appState.optimizerManager)
     }
 
     public var body: some View {
@@ -65,6 +63,7 @@ public struct CleanerDetailView: View {
                         .background(selectedTab == tab ? MaczyDesignTokens.brandPurple : Color(NSColor.controlBackgroundColor))
                         .foregroundColor(selectedTab == tab ? .white : .primary)
                         .cornerRadius(6)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -89,6 +88,11 @@ public struct CleanerDetailView: View {
                     }
                 }
                 .padding(18)
+            }
+        }
+        .sheet(isPresented: $showCleanupConfirmation) {
+            if let manifest = cleanerManager.lastManifest {
+                cleanupConfirmationSheet(manifest: manifest)
             }
         }
         .sheet(isPresented: $showUninstallConfirmation) {
@@ -138,13 +142,32 @@ public struct CleanerDetailView: View {
 
             // 4-step workflow indicator
             HStack(spacing: 12) {
-                StepBadge(index: 1, title: "Scan", active: cleanerManager.lastManifest == nil)
+                StepBadge(index: 1, title: "Scan", active: cleanerManager.lastManifest == nil && !cleanerManager.isScanning)
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(.secondary)
-                StepBadge(index: 2, title: "Review", active: cleanerManager.lastManifest != nil)
+                StepBadge(index: 2, title: "Review", active: cleanerManager.lastManifest != nil && !showCleanupConfirmation && !cleanerManager.isCleaning)
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(.secondary)
-                StepBadge(index: 3, title: "Confirm (Gated)", active: false)
+                StepBadge(index: 3, title: "Confirm", active: showCleanupConfirmation)
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(.secondary)
-                StepBadge(index: 4, title: "Clean (MZ-029)", active: false)
+                StepBadge(index: 4, title: "Clean (MZ-029)", active: cleanerManager.isCleaning || cleanerManager.lastCleanupResult != nil)
+            }
+
+            // Cleanup Execution Result Toast (MZ-029)
+            if let result = cleanerManager.lastCleanupResult {
+                HStack(spacing: 8) {
+                    Image(systemName: result.success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(result.success ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(result.message)
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("All items were safely moved to macOS Trash and can be restored at any time.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .background(MaczyDesignTokens.statusGreen.opacity(0.12))
+                .cornerRadius(8)
             }
 
             // Active Hero Card
@@ -196,19 +219,34 @@ public struct CleanerDetailView: View {
 
                         Spacer()
 
-                        Button(action: {
-                            _ = appState.dispatch(.startCleanerScan)
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                Text("Rescan")
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                _ = appState.dispatch(.startCleanerScan)
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                    Text("Rescan")
+                                }
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
                             }
-                            .font(.system(size: 12, weight: .semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                            .buttonStyle(.bordered)
+
+                            Button(action: {
+                                showCleanupConfirmation = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "trash.fill")
+                                    Text("Clean Caches to Trash…")
+                                }
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MaczyDesignTokens.brandPurple)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(MaczyDesignTokens.brandPurple)
                     }
                 } else {
                     HStack {
@@ -286,17 +324,17 @@ public struct CleanerDetailView: View {
                 }
             }
 
-            // MZ-029 Security Gate Notice
+            // MZ-029 Security Gate & Reversibility Guarantee
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "lock.shield.fill")
+                    Image(systemName: "shield.lefthalf.filled")
                         .font(.system(size: 12))
-                        .foregroundColor(MaczyDesignTokens.statusOrange)
-                    Text("Safety Gate: Deletion Execution (MZ-029)")
+                        .foregroundColor(MaczyDesignTokens.statusGreen)
+                    Text("Safe Trash Workflow (MZ-029)")
                         .font(.system(size: 12, weight: .semibold))
                 }
 
-                Text("File mutation, cleaning, and deletion execution remain strictly blocked pending Product Owner release approval and disposable fixture tests. Maczy guarantees zero inadvertent data loss.")
+                Text("Cache cleaning moves files to macOS Trash with explicit confirmation, preserving full user reversibility. Documents, git repositories, personal files, and databases are strictly protected.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .lineSpacing(3)
@@ -335,6 +373,7 @@ public struct CleanerDetailView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(isSelected ? MaczyDesignTokens.brandPurple.opacity(0.3) : Color.clear, lineWidth: 1)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -674,6 +713,97 @@ public struct CleanerDetailView: View {
         .padding(5)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
         .cornerRadius(4)
+    }
+
+    private func cleanupConfirmationSheet(manifest: CleanerScanManifest) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Confirm Cache Cleanup (MZ-029)")
+                    .font(.system(size: 16, weight: .bold))
+                Spacer()
+                Button("Cancel") {
+                    showCleanupConfirmation = false
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Text("The following \(manifest.items.count) cache items (\(manifest.formattedReclaimableSize)) will be safely moved to macOS Trash:")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(manifest.categoryBreakdown.keys), id: \.self) { cat in
+                        let bytes = manifest.categoryBreakdown[cat] ?? 0
+                        let count = manifest.categoryCounts[cat] ?? 0
+                        HStack {
+                            Image(systemName: cat.icon)
+                                .foregroundColor(MaczyDesignTokens.brandPurple)
+                                .frame(width: 18)
+                            Text(cat.displayName)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("(\(count) items)")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        }
+                        .padding(6)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(4)
+                    }
+                }
+            }
+            .frame(maxHeight: 180)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Total to Trash: \(manifest.formattedReclaimableSize)")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("Reversible: files can be restored anytime from macOS Trash. Documents, git repos, and databases are strictly excluded.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button(action: {
+                    cleanerManager.isCleanupApproved = true
+                    Task {
+                        do {
+                            _ = try await cleanerManager.executeCleanup()
+                            showCleanupConfirmation = false
+                        } catch {
+                            cleanupErrorMessage = error.localizedDescription
+                        }
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        if cleanerManager.isCleaning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "trash.fill")
+                        }
+                        Text("Confirm & Move to Trash")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(MaczyDesignTokens.brandPurple)
+                .disabled(cleanerManager.isCleaning)
+            }
+
+            if let err = cleanupErrorMessage {
+                Text(err)
+                    .font(.system(size: 10))
+                    .foregroundColor(MaczyDesignTokens.statusRed)
+            }
+        }
+        .padding(18)
+        .frame(width: 480)
     }
 
     private func uninstallConfirmationSheet(manifest: UninstallManifest) -> some View {

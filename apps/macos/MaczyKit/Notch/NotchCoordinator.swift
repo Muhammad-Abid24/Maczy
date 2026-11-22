@@ -22,132 +22,289 @@ public final class NotchCoordinator: ObservableObject {
 
     public let windowController: NotchOverlayWindowController
 
-    // MARK: - Custom Dimensions (Persisted via UserDefaults)
-    @Published public var customCompactWidth: CGFloat? {
+    // MARK: - Physical Notch Custom Dimensions (Persisted via UserDefaults)
+    @Published public var customPhysicalCompactWidth: CGFloat? {
         didSet {
-            if let w = customCompactWidth {
-                UserDefaults.standard.set(Double(w), forKey: "maczy.notch.customCompactWidth")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maczy.notch.customCompactWidth")
-            }
+            persist(customPhysicalCompactWidth, key: "maczy.notch.physical.compactWidth")
+            updateProfile()
+        }
+    }
+    @Published public var customPhysicalCompactHeight: CGFloat? {
+        didSet {
+            persist(customPhysicalCompactHeight, key: "maczy.notch.physical.compactHeight")
+            updateProfile()
+        }
+    }
+    @Published public var customPhysicalExpandedWidth: CGFloat? {
+        didSet {
+            persist(customPhysicalExpandedWidth, key: "maczy.notch.physical.expandedWidth")
+            updateProfile()
+        }
+    }
+    @Published public var customPhysicalExpandedHeight: CGFloat? {
+        didSet {
+            persist(customPhysicalExpandedHeight, key: "maczy.notch.physical.expandedHeight")
             updateProfile()
         }
     }
 
-    @Published public var customCompactHeight: CGFloat? {
+    // MARK: - Virtual Island Custom Dimensions (Persisted via UserDefaults)
+    @Published public var customVirtualCompactWidth: CGFloat? {
         didSet {
-            if let h = customCompactHeight {
-                UserDefaults.standard.set(Double(h), forKey: "maczy.notch.customCompactHeight")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maczy.notch.customCompactHeight")
-            }
+            persist(customVirtualCompactWidth, key: "maczy.notch.virtual.compactWidth")
+            updateProfile()
+        }
+    }
+    @Published public var customVirtualCompactHeight: CGFloat? {
+        didSet {
+            persist(customVirtualCompactHeight, key: "maczy.notch.virtual.compactHeight")
+            updateProfile()
+        }
+    }
+    @Published public var customVirtualExpandedWidth: CGFloat? {
+        didSet {
+            persist(customVirtualExpandedWidth, key: "maczy.notch.virtual.expandedWidth")
+            updateProfile()
+        }
+    }
+    @Published public var customVirtualExpandedHeight: CGFloat? {
+        didSet {
+            persist(customVirtualExpandedHeight, key: "maczy.notch.virtual.expandedHeight")
             updateProfile()
         }
     }
 
-    @Published public var customExpandedWidth: CGFloat? {
-        didSet {
-            if let w = customExpandedWidth {
-                UserDefaults.standard.set(Double(w), forKey: "maczy.notch.customExpandedWidth")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maczy.notch.customExpandedWidth")
-            }
-            updateProfile()
+    // MARK: - Dimension Accessors
+
+    public var physicalCompactWidth: CGFloat {
+        get { customPhysicalCompactWidth ?? 220.0 }
+        set { customPhysicalCompactWidth = newValue }
+    }
+    public var physicalCompactHeight: CGFloat {
+        get { customPhysicalCompactHeight ?? 34.0 }
+        set { customPhysicalCompactHeight = newValue }
+    }
+    public var physicalExpandedWidth: CGFloat {
+        get { customPhysicalExpandedWidth ?? NotchGeometry.defaultPhysicalExpandedSize.width }
+        set { customPhysicalExpandedWidth = newValue }
+    }
+    public var physicalExpandedHeight: CGFloat {
+        get { customPhysicalExpandedHeight ?? NotchGeometry.defaultPhysicalExpandedSize.height }
+        set { customPhysicalExpandedHeight = newValue }
+    }
+
+    public var virtualCompactWidth: CGFloat {
+        get { customVirtualCompactWidth ?? NotchGeometry.defaultVirtualCompactSize.width }
+        set { customVirtualCompactWidth = newValue }
+    }
+    public var virtualCompactHeight: CGFloat {
+        get { customVirtualCompactHeight ?? NotchGeometry.defaultVirtualCompactSize.height }
+        set { customVirtualCompactHeight = newValue }
+    }
+    public var virtualExpandedWidth: CGFloat {
+        get { customVirtualExpandedWidth ?? NotchGeometry.defaultVirtualExpandedSize.width }
+        set { customVirtualExpandedWidth = newValue }
+    }
+    public var virtualExpandedHeight: CGFloat {
+        get { customVirtualExpandedHeight ?? NotchGeometry.defaultVirtualExpandedSize.height }
+        set { customVirtualExpandedHeight = newValue }
+    }
+
+    public var isPhysicalActive: Bool {
+        switch displayMode {
+        case .alwaysPhysical:
+            return true
+        case .alwaysVirtual:
+            return false
+        case .auto:
+            return activeProfile.hasPhysicalNotch
         }
     }
 
-    @Published public var customExpandedHeight: CGFloat? {
-        didSet {
-            if let h = customExpandedHeight {
-                UserDefaults.standard.set(Double(h), forKey: "maczy.notch.customExpandedHeight")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "maczy.notch.customExpandedHeight")
-            }
-            updateProfile()
-        }
-    }
-
+    // Active mode proxy getters/setters (maintains compatibility with existing callers/tests)
     public var currentCompactWidth: CGFloat {
-        get { customCompactWidth ?? activeProfile.compactSize.width }
-        set { customCompactWidth = newValue }
+        get { isPhysicalActive ? physicalCompactWidth : virtualCompactWidth }
+        set {
+            if isPhysicalActive {
+                physicalCompactWidth = newValue
+            } else {
+                virtualCompactWidth = newValue
+            }
+        }
     }
 
     public var currentCompactHeight: CGFloat {
-        get { customCompactHeight ?? activeProfile.compactSize.height }
-        set { customCompactHeight = newValue }
+        get { isPhysicalActive ? physicalCompactHeight : virtualCompactHeight }
+        set {
+            if isPhysicalActive {
+                physicalCompactHeight = newValue
+            } else {
+                virtualCompactHeight = newValue
+            }
+        }
     }
 
     public var currentExpandedWidth: CGFloat {
-        get { customExpandedWidth ?? activeProfile.expandedSize.width }
-        set { customExpandedWidth = newValue }
+        get { isPhysicalActive ? physicalExpandedWidth : virtualExpandedWidth }
+        set {
+            if isPhysicalActive {
+                physicalExpandedWidth = newValue
+            } else {
+                virtualExpandedWidth = newValue
+            }
+        }
     }
 
     public var currentExpandedHeight: CGFloat {
-        get { customExpandedHeight ?? activeProfile.expandedSize.height }
-        set { customExpandedHeight = newValue }
+        get { isPhysicalActive ? physicalExpandedHeight : virtualExpandedHeight }
+        set {
+            if isPhysicalActive {
+                physicalExpandedHeight = newValue
+            } else {
+                virtualExpandedHeight = newValue
+            }
+        }
+    }
+
+    public var hasCustomPhysicalDimensions: Bool {
+        return customPhysicalCompactWidth != nil || customPhysicalCompactHeight != nil ||
+               customPhysicalExpandedWidth != nil || customPhysicalExpandedHeight != nil
+    }
+
+    public var hasCustomVirtualDimensions: Bool {
+        return customVirtualCompactWidth != nil || customVirtualCompactHeight != nil ||
+               customVirtualExpandedWidth != nil || customVirtualExpandedHeight != nil
     }
 
     public var hasCustomDimensions: Bool {
-        return customCompactWidth != nil || customCompactHeight != nil || customExpandedWidth != nil || customExpandedHeight != nil
+        return hasCustomPhysicalDimensions || hasCustomVirtualDimensions
     }
 
-    public func resetDimensionsToDefault() {
-        customCompactWidth = nil
-        customCompactHeight = nil
-        customExpandedWidth = nil
-        customExpandedHeight = nil
-        UserDefaults.standard.removeObject(forKey: "maczy.notch.customCompactWidth")
-        UserDefaults.standard.removeObject(forKey: "maczy.notch.customCompactHeight")
-        UserDefaults.standard.removeObject(forKey: "maczy.notch.customExpandedWidth")
-        UserDefaults.standard.removeObject(forKey: "maczy.notch.customExpandedHeight")
+    public func resetPhysicalDimensionsToDefault() {
+        customPhysicalCompactWidth = nil
+        customPhysicalCompactHeight = nil
+        customPhysicalExpandedWidth = nil
+        customPhysicalExpandedHeight = nil
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.physical.compactWidth")
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.physical.compactHeight")
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.physical.expandedWidth")
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.physical.expandedHeight")
         updateProfile()
     }
 
+    public func resetVirtualDimensionsToDefault() {
+        customVirtualCompactWidth = nil
+        customVirtualCompactHeight = nil
+        customVirtualExpandedWidth = nil
+        customVirtualExpandedHeight = nil
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.virtual.compactWidth")
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.virtual.compactHeight")
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.virtual.expandedWidth")
+        UserDefaults.standard.removeObject(forKey: "maczy.notch.virtual.expandedHeight")
+        updateProfile()
+    }
+
+    public func resetDimensionsToDefault() {
+        resetPhysicalDimensionsToDefault()
+        resetVirtualDimensionsToDefault()
+    }
+
+    private func persist(_ val: CGFloat?, key: String) {
+        if let v = val {
+            UserDefaults.standard.set(Double(v), forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
     public init(profile: NotchScreenProfile? = nil) {
-        var initCompactW: CGFloat? = nil
-        var initCompactH: CGFloat? = nil
-        var initExpandedW: CGFloat? = nil
-        var initExpandedH: CGFloat? = nil
+        var physCompactW: CGFloat? = nil
+        var physCompactH: CGFloat? = nil
+        var physExpandedW: CGFloat? = nil
+        var physExpandedH: CGFloat? = nil
 
-        if UserDefaults.standard.object(forKey: "maczy.notch.customCompactWidth") != nil {
-            initCompactW = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.customCompactWidth"))
-        }
-        if UserDefaults.standard.object(forKey: "maczy.notch.customCompactHeight") != nil {
-            initCompactH = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.customCompactHeight"))
-        }
-        if UserDefaults.standard.object(forKey: "maczy.notch.customExpandedWidth") != nil {
-            initExpandedW = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.customExpandedWidth"))
-        }
-        if UserDefaults.standard.object(forKey: "maczy.notch.customExpandedHeight") != nil {
-            initExpandedH = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.customExpandedHeight"))
-        }
+        var virtCompactW: CGFloat? = nil
+        var virtCompactH: CGFloat? = nil
+        var virtExpandedW: CGFloat? = nil
+        var virtExpandedH: CGFloat? = nil
 
-        self.customCompactWidth = initCompactW
-        self.customCompactHeight = initCompactH
-        self.customExpandedWidth = initExpandedW
-        self.customExpandedHeight = initExpandedH
-
-        var customCompact: CGSize? = nil
-        if let w = initCompactW, let h = initCompactH {
-            customCompact = CGSize(width: w, height: h)
-        } else if let w = initCompactW {
-            customCompact = CGSize(width: w, height: 32)
-        } else if let h = initCompactH {
-            customCompact = CGSize(width: 350, height: h)
+        if UserDefaults.standard.object(forKey: "maczy.notch.physical.compactWidth") != nil {
+            physCompactW = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.physical.compactWidth"))
+        }
+        if UserDefaults.standard.object(forKey: "maczy.notch.physical.compactHeight") != nil {
+            physCompactH = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.physical.compactHeight"))
+        }
+        if UserDefaults.standard.object(forKey: "maczy.notch.physical.expandedWidth") != nil {
+            physExpandedW = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.physical.expandedWidth"))
+        }
+        if UserDefaults.standard.object(forKey: "maczy.notch.physical.expandedHeight") != nil {
+            physExpandedH = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.physical.expandedHeight"))
         }
 
-        var customExpanded: CGSize? = nil
-        if let w = initExpandedW, let h = initExpandedH {
-            customExpanded = CGSize(width: w, height: h)
-        } else if let w = initExpandedW {
-            customExpanded = CGSize(width: w, height: 160)
-        } else if let h = initExpandedH {
-            customExpanded = CGSize(width: 420, height: h)
+        if UserDefaults.standard.object(forKey: "maczy.notch.virtual.compactWidth") != nil {
+            virtCompactW = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.virtual.compactWidth"))
+        }
+        if UserDefaults.standard.object(forKey: "maczy.notch.virtual.compactHeight") != nil {
+            virtCompactH = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.virtual.compactHeight"))
+        }
+        if UserDefaults.standard.object(forKey: "maczy.notch.virtual.expandedWidth") != nil {
+            virtExpandedW = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.virtual.expandedWidth"))
+        }
+        if UserDefaults.standard.object(forKey: "maczy.notch.virtual.expandedHeight") != nil {
+            virtExpandedH = CGFloat(UserDefaults.standard.double(forKey: "maczy.notch.virtual.expandedHeight"))
+        }
+
+        self.customPhysicalCompactWidth = physCompactW
+        self.customPhysicalCompactHeight = physCompactH
+        self.customPhysicalExpandedWidth = physExpandedW
+        self.customPhysicalExpandedHeight = physExpandedH
+
+        self.customVirtualCompactWidth = virtCompactW
+        self.customVirtualCompactHeight = virtCompactH
+        self.customVirtualExpandedWidth = virtExpandedW
+        self.customVirtualExpandedHeight = virtExpandedH
+
+        var physCompact: CGSize? = nil
+        if let w = physCompactW, let h = physCompactH {
+            physCompact = CGSize(width: w, height: h)
+        } else if let w = physCompactW {
+            physCompact = CGSize(width: w, height: 34)
+        } else if let h = physCompactH {
+            physCompact = CGSize(width: 220, height: h)
+        }
+
+        var physExpanded: CGSize? = nil
+        if let w = physExpandedW, let h = physExpandedH {
+            physExpanded = CGSize(width: w, height: h)
+        } else if let w = physExpandedW {
+            physExpanded = CGSize(width: w, height: NotchGeometry.defaultPhysicalExpandedSize.height)
+        } else if let h = physExpandedH {
+            physExpanded = CGSize(width: NotchGeometry.defaultPhysicalExpandedSize.width, height: h)
+        }
+
+        var virtCompact: CGSize? = nil
+        if let w = virtCompactW, let h = virtCompactH {
+            virtCompact = CGSize(width: w, height: h)
+        } else if let w = virtCompactW {
+            virtCompact = CGSize(width: w, height: NotchGeometry.defaultVirtualCompactSize.height)
+        } else if let h = virtCompactH {
+            virtCompact = CGSize(width: NotchGeometry.defaultVirtualCompactSize.width, height: h)
+        }
+
+        var virtExpanded: CGSize? = nil
+        if let w = virtExpandedW, let h = virtExpandedH {
+            virtExpanded = CGSize(width: w, height: h)
+        } else if let w = virtExpandedW {
+            virtExpanded = CGSize(width: w, height: NotchGeometry.defaultVirtualExpandedSize.height)
+        } else if let h = virtExpandedH {
+            virtExpanded = CGSize(width: NotchGeometry.defaultVirtualExpandedSize.width, height: h)
         }
 
         let initialProfile = profile ?? NotchGeometry.detectProfile(
-            customCompactSize: customCompact,
-            customExpandedSize: customExpanded
+            physicalCompactSize: physCompact,
+            physicalExpandedSize: physExpanded,
+            virtualCompactSize: virtCompact,
+            virtualExpandedSize: virtExpanded
         )
         self.activeProfile = initialProfile
         let controller = NotchOverlayWindowController()
@@ -170,28 +327,48 @@ public final class NotchCoordinator: ObservableObject {
 
     /// Refresh screen profile based on current active display and displayMode preference.
     public func updateProfile() {
-        var customCompact: CGSize? = nil
-        if let w = customCompactWidth, let h = customCompactHeight {
-            customCompact = CGSize(width: w, height: h)
-        } else if let w = customCompactWidth {
-            customCompact = CGSize(width: w, height: activeProfile.compactSize.height)
-        } else if let h = customCompactHeight {
-            customCompact = CGSize(width: activeProfile.compactSize.width, height: h)
+        var physCompact: CGSize? = nil
+        if let w = customPhysicalCompactWidth, let h = customPhysicalCompactHeight {
+            physCompact = CGSize(width: w, height: h)
+        } else if let w = customPhysicalCompactWidth {
+            physCompact = CGSize(width: w, height: 34)
+        } else if let h = customPhysicalCompactHeight {
+            physCompact = CGSize(width: 220, height: h)
         }
 
-        var customExpanded: CGSize? = nil
-        if let w = customExpandedWidth, let h = customExpandedHeight {
-            customExpanded = CGSize(width: w, height: h)
-        } else if let w = customExpandedWidth {
-            customExpanded = CGSize(width: w, height: activeProfile.expandedSize.height)
-        } else if let h = customExpandedHeight {
-            customExpanded = CGSize(width: activeProfile.expandedSize.width, height: h)
+        var physExpanded: CGSize? = nil
+        if let w = customPhysicalExpandedWidth, let h = customPhysicalExpandedHeight {
+            physExpanded = CGSize(width: w, height: h)
+        } else if let w = customPhysicalExpandedWidth {
+            physExpanded = CGSize(width: w, height: NotchGeometry.defaultPhysicalExpandedSize.height)
+        } else if let h = customPhysicalExpandedHeight {
+            physExpanded = CGSize(width: NotchGeometry.defaultPhysicalExpandedSize.width, height: h)
+        }
+
+        var virtCompact: CGSize? = nil
+        if let w = customVirtualCompactWidth, let h = customVirtualCompactHeight {
+            virtCompact = CGSize(width: w, height: h)
+        } else if let w = customVirtualCompactWidth {
+            virtCompact = CGSize(width: w, height: NotchGeometry.defaultVirtualCompactSize.height)
+        } else if let h = customVirtualCompactHeight {
+            virtCompact = CGSize(width: NotchGeometry.defaultVirtualCompactSize.width, height: h)
+        }
+
+        var virtExpanded: CGSize? = nil
+        if let w = customVirtualExpandedWidth, let h = customVirtualExpandedHeight {
+            virtExpanded = CGSize(width: w, height: h)
+        } else if let w = customVirtualExpandedWidth {
+            virtExpanded = CGSize(width: w, height: NotchGeometry.defaultVirtualExpandedSize.height)
+        } else if let h = customVirtualExpandedHeight {
+            virtExpanded = CGSize(width: NotchGeometry.defaultVirtualExpandedSize.width, height: h)
         }
 
         let newProfile = NotchGeometry.detectProfile(
             mode: displayMode,
-            customCompactSize: customCompact,
-            customExpandedSize: customExpanded
+            physicalCompactSize: physCompact,
+            physicalExpandedSize: physExpanded,
+            virtualCompactSize: virtCompact,
+            virtualExpandedSize: virtExpanded
         )
         self.activeProfile = newProfile
         windowController.updateProfile(newProfile, expansionState: expansionState)

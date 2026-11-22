@@ -241,4 +241,45 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertTrue(resetRes.ok)
         XCTAssertFalse(NotchCoordinator.shared.hasCustomDimensions)
     }
+
+    @MainActor
+    func testSeparatedPhysicalAndVirtualDimensions() {
+        let coordinator = NotchCoordinator(profile: .fallback)
+        coordinator.resetDimensionsToDefault()
+
+        // Configure Physical dimensions
+        coordinator.physicalCompactWidth = 240
+        coordinator.physicalCompactHeight = 36
+        coordinator.physicalExpandedWidth = 470
+        coordinator.physicalExpandedHeight = 185
+
+        XCTAssertTrue(coordinator.hasCustomPhysicalDimensions)
+        XCTAssertFalse(coordinator.hasCustomVirtualDimensions)
+
+        // Configure Virtual dimensions independently
+        coordinator.virtualCompactWidth = 380
+        coordinator.virtualCompactHeight = 30
+        coordinator.virtualExpandedWidth = 440
+        coordinator.virtualExpandedHeight = 150
+
+        XCTAssertTrue(coordinator.hasCustomPhysicalDimensions)
+        XCTAssertTrue(coordinator.hasCustomVirtualDimensions)
+
+        // Verify values are strictly isolated
+        XCTAssertEqual(coordinator.physicalCompactWidth, 240)
+        XCTAssertEqual(coordinator.physicalCompactHeight, 36)
+        XCTAssertEqual(coordinator.virtualCompactWidth, 380)
+        XCTAssertEqual(coordinator.virtualCompactHeight, 30)
+
+        // Reset only physical
+        coordinator.resetPhysicalDimensionsToDefault()
+        XCTAssertFalse(coordinator.hasCustomPhysicalDimensions)
+        XCTAssertTrue(coordinator.hasCustomVirtualDimensions)
+        XCTAssertEqual(coordinator.virtualCompactWidth, 380)
+
+        // Reset virtual
+        coordinator.resetVirtualDimensionsToDefault()
+        XCTAssertFalse(coordinator.hasCustomVirtualDimensions)
+        XCTAssertFalse(coordinator.hasCustomDimensions)
+    }
 }

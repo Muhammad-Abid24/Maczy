@@ -18,6 +18,7 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-015-SEPARATED-DIMENSIONS** Separated Force Physical Notch & Force Virtual Island width/height dimension adjustments (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-015-CUSTOM-DIMENSIONS** Dynamic Notch height & width customizable dimensions (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-015-FIX-NOTCH-SHAPE** Dynamic Notch expansion shape (top-flush, rounded bottom) & click-outside dismissal (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-031** Cross-surface accessibility audit (`feat/mz-031-accessibility-audit`)

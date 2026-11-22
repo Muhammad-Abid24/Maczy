@@ -47,17 +47,20 @@ public enum NotchGeometry {
         return CGRect(x: x, y: y, width: expandedSize.width, height: expandedSize.height)
     }
 
-    /// Detect notch hardware profile for a given screen or main display.
+    /// Detect notch hardware profile for a given screen or main display with mode-separated dimensions.
     public static func detectProfile(
         for screen: NSScreen? = NSScreen.main ?? NSScreen.screens.first,
         mode: NotchDisplayMode = .auto,
-        customCompactSize: CGSize? = nil,
-        customExpandedSize: CGSize? = nil
+        physicalCompactSize: CGSize? = nil,
+        physicalExpandedSize: CGSize? = nil,
+        virtualCompactSize: CGSize? = nil,
+        virtualExpandedSize: CGSize? = nil
     ) -> NotchScreenProfile {
         guard let screen = screen else {
             let base = NotchScreenProfile.fallback
-            let compact = customCompactSize ?? base.compactSize
-            let expanded = customExpandedSize ?? base.expandedSize
+            let isPhys = (mode == .alwaysPhysical)
+            let compact = (isPhys ? physicalCompactSize : virtualCompactSize) ?? base.compactSize
+            let expanded = (isPhys ? physicalExpandedSize : virtualExpandedSize) ?? base.expandedSize
             let rect = CGRect(
                 x: base.notchRect.midX - (compact.width / 2.0),
                 y: base.notchRect.maxY - compact.height,
@@ -67,9 +70,9 @@ public enum NotchGeometry {
             return NotchScreenProfile(
                 screenName: base.screenName,
                 screenFrame: base.screenFrame,
-                hasPhysicalNotch: base.hasPhysicalNotch,
+                hasPhysicalNotch: isPhys,
                 notchRect: rect,
-                isVirtualIsland: base.isVirtualIsland,
+                isVirtualIsland: !isPhys,
                 compactSize: compact,
                 expandedSize: expanded
             )
@@ -80,8 +83,8 @@ public enum NotchGeometry {
 
         switch mode {
         case .alwaysVirtual:
-            let compact = customCompactSize ?? defaultVirtualCompactSize
-            let expanded = customExpandedSize ?? defaultVirtualExpandedSize
+            let compact = virtualCompactSize ?? defaultVirtualCompactSize
+            let expanded = virtualExpandedSize ?? defaultVirtualExpandedSize
             let virtualRect = calculateVirtualIslandRect(screenFrame: frame, compactSize: compact)
             return NotchScreenProfile(
                 screenName: screenName,
@@ -108,14 +111,14 @@ public enum NotchGeometry {
                 ?? CGRect(
                     x: frame.midX - 110.0, y: frame.maxY - safeTop, width: 220.0, height: safeTop)
 
-            let compact = customCompactSize ?? CGSize(width: baseNotchRect.width, height: baseNotchRect.height)
+            let compact = physicalCompactSize ?? CGSize(width: baseNotchRect.width, height: baseNotchRect.height)
             let notchRect = CGRect(
                 x: frame.midX - (compact.width / 2.0),
                 y: frame.maxY - compact.height,
                 width: compact.width,
                 height: compact.height
             )
-            let expanded = customExpandedSize ?? defaultPhysicalExpandedSize
+            let expanded = physicalExpandedSize ?? defaultPhysicalExpandedSize
 
             return NotchScreenProfile(
                 screenName: screenName,
@@ -143,14 +146,14 @@ public enum NotchGeometry {
             }
 
             if let physicalRect = detectedPhysicalRect {
-                let compact = customCompactSize ?? CGSize(width: physicalRect.width, height: physicalRect.height)
+                let compact = physicalCompactSize ?? CGSize(width: physicalRect.width, height: physicalRect.height)
                 let notchRect = CGRect(
                     x: frame.midX - (compact.width / 2.0),
                     y: frame.maxY - compact.height,
                     width: compact.width,
                     height: compact.height
                 )
-                let expanded = customExpandedSize ?? defaultPhysicalExpandedSize
+                let expanded = physicalExpandedSize ?? defaultPhysicalExpandedSize
 
                 return NotchScreenProfile(
                     screenName: screenName,
@@ -162,8 +165,8 @@ public enum NotchGeometry {
                     expandedSize: expanded
                 )
             } else {
-                let compact = customCompactSize ?? defaultVirtualCompactSize
-                let expanded = customExpandedSize ?? defaultVirtualExpandedSize
+                let compact = virtualCompactSize ?? defaultVirtualCompactSize
+                let expanded = virtualExpandedSize ?? defaultVirtualExpandedSize
                 let virtualRect = calculateVirtualIslandRect(screenFrame: frame, compactSize: compact)
                 return NotchScreenProfile(
                     screenName: screenName,
@@ -176,5 +179,22 @@ public enum NotchGeometry {
                 )
             }
         }
+    }
+
+    /// Compatibility overload for unified custom compact & expanded sizes.
+    public static func detectProfile(
+        for screen: NSScreen? = NSScreen.main ?? NSScreen.screens.first,
+        mode: NotchDisplayMode = .auto,
+        customCompactSize: CGSize?,
+        customExpandedSize: CGSize? = nil
+    ) -> NotchScreenProfile {
+        return detectProfile(
+            for: screen,
+            mode: mode,
+            physicalCompactSize: customCompactSize,
+            physicalExpandedSize: customExpandedSize,
+            virtualCompactSize: customCompactSize,
+            virtualExpandedSize: customExpandedSize
+        )
     }
 }

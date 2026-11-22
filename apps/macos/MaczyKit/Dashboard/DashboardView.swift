@@ -114,6 +114,12 @@ public struct DashboardView: View {
             }
         }
         .frame(minWidth: 840, minHeight: 640)
+        .onAppear {
+            appState.refreshPermissions()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appState.refreshPermissions()
+        }
     }
 
     private func toolbarSubtitle(for tab: DashboardTab) -> String {

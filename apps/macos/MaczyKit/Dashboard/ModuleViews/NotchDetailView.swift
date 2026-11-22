@@ -7,6 +7,8 @@ public struct NotchDetailView: View {
     @ObservedObject var systemHUD: SystemHUDCoordinator = .shared
     @ObservedObject var liveCoordinator: LiveActivityCoordinator = .shared
 
+    @State private var dimensionTab: NotchDisplayMode = .alwaysPhysical
+
     public init(appState: AppState) {
         self.appState = appState
     }
@@ -214,6 +216,281 @@ public struct NotchDetailView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .onChange(of: coordinator.displayMode) { _, newMode in
+                    if newMode == .alwaysVirtual {
+                        dimensionTab = .alwaysVirtual
+                    } else if newMode == .alwaysPhysical {
+                        dimensionTab = .alwaysPhysical
+                    } else {
+                        dimensionTab = coordinator.isPhysicalActive ? .alwaysPhysical : .alwaysVirtual
+                    }
+                }
+            }
+
+            // MARK: - Notch Dimensions & Scaling (Separated Physical vs Virtual)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Notch Dimensions & Scaling")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(dimensionTab == .alwaysPhysical
+                            ? "Customize hardware camera notch silhouette and expanded card for MacBook displays."
+                            : "Customize floating capsule silhouette and expanded card for external / desktop displays.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if dimensionTab == .alwaysPhysical && coordinator.hasCustomPhysicalDimensions {
+                        Button("Reset Physical Defaults") {
+                            coordinator.resetPhysicalDimensionsToDefault()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    } else if dimensionTab == .alwaysVirtual && coordinator.hasCustomVirtualDimensions {
+                        Button("Reset Virtual Defaults") {
+                            coordinator.resetVirtualDimensionsToDefault()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+
+                // Configuration Target Switcher
+                Picker("Target Configuration", selection: $dimensionTab) {
+                    Text("Force Physical Notch").tag(NotchDisplayMode.alwaysPhysical)
+                    Text("Force Virtual Island").tag(NotchDisplayMode.alwaysVirtual)
+                }
+                .pickerStyle(.segmented)
+
+                if dimensionTab == .alwaysPhysical {
+                    // MARK: Physical Notch Dimensions Controls
+                    VStack(spacing: 14) {
+                        // Compact Silhouette Dimensions
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Physical Notch Silhouette (Camera Housing)")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(Int(coordinator.physicalCompactWidth)) × \(Int(coordinator.physicalCompactHeight)) pt")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(MaczyDesignTokens.brandPurple)
+                            }
+
+                            HStack(spacing: 16) {
+                                // Width Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.left.and.right")
+                                            .font(.system(size: 10))
+                                        Text("Width: \(Int(coordinator.physicalCompactWidth)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.physicalCompactWidth },
+                                            set: { coordinator.physicalCompactWidth = $0 }
+                                        ),
+                                        in: 140...480,
+                                        step: 5
+                                    )
+                                    .tint(MaczyDesignTokens.brandPurple)
+                                }
+
+                                // Height Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.up.and.down")
+                                            .font(.system(size: 10))
+                                        Text("Height: \(Int(coordinator.physicalCompactHeight)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.physicalCompactHeight },
+                                            set: { coordinator.physicalCompactHeight = $0 }
+                                        ),
+                                        in: 24...54,
+                                        step: 1
+                                    )
+                                    .tint(MaczyDesignTokens.brandLavender)
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        // Expanded Card Dimensions
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Physical Expanded HUD Card")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(Int(coordinator.physicalExpandedWidth)) × \(Int(coordinator.physicalExpandedHeight)) pt")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(MaczyDesignTokens.brandPurple)
+                            }
+
+                            HStack(spacing: 16) {
+                                // Width Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.left.and.right")
+                                            .font(.system(size: 10))
+                                        Text("Width: \(Int(coordinator.physicalExpandedWidth)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.physicalExpandedWidth },
+                                            set: { coordinator.physicalExpandedWidth = $0 }
+                                        ),
+                                        in: 320...680,
+                                        step: 10
+                                    )
+                                    .tint(MaczyDesignTokens.brandPurple)
+                                }
+
+                                // Height Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.up.and.down")
+                                            .font(.system(size: 10))
+                                        Text("Height: \(Int(coordinator.physicalExpandedHeight)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.physicalExpandedHeight },
+                                            set: { coordinator.physicalExpandedHeight = $0 }
+                                        ),
+                                        in: 120...320,
+                                        step: 5
+                                    )
+                                    .tint(MaczyDesignTokens.brandLavender)
+                                }
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(10)
+                } else {
+                    // MARK: Virtual Island Dimensions Controls
+                    VStack(spacing: 14) {
+                        // Compact Silhouette Dimensions
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Virtual Island Silhouette (Floating Capsule)")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(Int(coordinator.virtualCompactWidth)) × \(Int(coordinator.virtualCompactHeight)) pt")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(MaczyDesignTokens.statusBlue)
+                            }
+
+                            HStack(spacing: 16) {
+                                // Width Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.left.and.right")
+                                            .font(.system(size: 10))
+                                        Text("Width: \(Int(coordinator.virtualCompactWidth)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.virtualCompactWidth },
+                                            set: { coordinator.virtualCompactWidth = $0 }
+                                        ),
+                                        in: 180...600,
+                                        step: 5
+                                    )
+                                    .tint(MaczyDesignTokens.statusBlue)
+                                }
+
+                                // Height Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.up.and.down")
+                                            .font(.system(size: 10))
+                                        Text("Height: \(Int(coordinator.virtualCompactHeight)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.virtualCompactHeight },
+                                            set: { coordinator.virtualCompactHeight = $0 }
+                                        ),
+                                        in: 24...64,
+                                        step: 1
+                                    )
+                                    .tint(MaczyDesignTokens.brandLavender)
+                                }
+                            }
+                        }
+
+                        Divider()
+
+                        // Expanded Card Dimensions
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Virtual Expanded HUD Card")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(Int(coordinator.virtualExpandedWidth)) × \(Int(coordinator.virtualExpandedHeight)) pt")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(MaczyDesignTokens.statusBlue)
+                            }
+
+                            HStack(spacing: 16) {
+                                // Width Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.left.and.right")
+                                            .font(.system(size: 10))
+                                        Text("Width: \(Int(coordinator.virtualExpandedWidth)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.virtualExpandedWidth },
+                                            set: { coordinator.virtualExpandedWidth = $0 }
+                                        ),
+                                        in: 320...750,
+                                        step: 10
+                                    )
+                                    .tint(MaczyDesignTokens.statusBlue)
+                                }
+
+                                // Height Slider
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: "arrow.up.and.down")
+                                            .font(.system(size: 10))
+                                        Text("Height: \(Int(coordinator.virtualExpandedHeight)) pt")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                    Slider(
+                                        value: Binding(
+                                            get: { coordinator.virtualExpandedHeight },
+                                            set: { coordinator.virtualExpandedHeight = $0 }
+                                        ),
+                                        in: 120...360,
+                                        step: 5
+                                    )
+                                    .tint(MaczyDesignTokens.brandLavender)
+                                }
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(10)
+                }
             }
 
             // MARK: - Overlay Controls

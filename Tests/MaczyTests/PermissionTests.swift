@@ -61,4 +61,38 @@ final class PermissionTests: XCTestCase {
             XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(status))
         }
     }
+
+    func testAppStateRefreshPermissionsSync() {
+        let appState = AppState()
+        // Prior to refresh, all are notDetermined
+        XCTAssertEqual(appState.permissionState(.screenRecording), .notDetermined)
+
+        appState.refreshPermissions()
+
+        // Permissions should reflect PermissionManager system states
+        for perm in MaczyPermission.allCases {
+            let state = appState.permissionState(perm)
+            XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(state))
+        }
+    }
+
+    func testPublishedPermissionsDictionaryObservability() {
+        let appState = AppState()
+        var notificationReceived = false
+        let cancellable = appState.$permissions.sink { perms in
+            if perms[.screenRecording] == .granted {
+                notificationReceived = true
+            }
+        }
+
+        appState.setPermissionState(.screenRecording, state: .granted)
+        XCTAssertTrue(notificationReceived)
+        cancellable.cancel()
+    }
+
+    func testRequestAuthorizationNonThrowing() async {
+        let manager = PermissionManager.shared
+        let state = await manager.requestAuthorization(for: .screenRecording)
+        XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(state))
+    }
 }

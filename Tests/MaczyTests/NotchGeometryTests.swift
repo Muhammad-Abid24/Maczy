@@ -179,4 +179,107 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(coordinator.expansionState, .compact)
         XCTAssertFalse(coordinator.windowController.isMonitoringOutsideClicks)
     }
+
+    func testCustomNotchDimensionsDetection() {
+        let customCompact = CGSize(width: 400, height: 40)
+        let customExpanded = CGSize(width: 520, height: 220)
+
+        let profile = NotchGeometry.detectProfile(
+            mode: .alwaysVirtual,
+            customCompactSize: customCompact,
+            customExpandedSize: customExpanded
+        )
+
+        XCTAssertEqual(profile.compactSize.width, 400)
+        XCTAssertEqual(profile.compactSize.height, 40)
+        XCTAssertEqual(profile.notchRect.width, 400)
+        XCTAssertEqual(profile.notchRect.height, 40)
+        XCTAssertEqual(profile.expandedSize.width, 520)
+        XCTAssertEqual(profile.expandedSize.height, 220)
+    }
+
+    @MainActor
+    func testNotchCoordinatorCustomDimensionsLifecycle() {
+        let coordinator = NotchCoordinator(profile: .fallback)
+        coordinator.resetDimensionsToDefault()
+        XCTAssertFalse(coordinator.hasCustomDimensions)
+
+        coordinator.currentCompactWidth = 380
+        coordinator.currentCompactHeight = 36
+        coordinator.currentExpandedWidth = 480
+        coordinator.currentExpandedHeight = 190
+
+        XCTAssertTrue(coordinator.hasCustomDimensions)
+        XCTAssertEqual(coordinator.currentCompactWidth, 380)
+        XCTAssertEqual(coordinator.currentCompactHeight, 36)
+        XCTAssertEqual(coordinator.activeProfile.compactSize.width, 380)
+        XCTAssertEqual(coordinator.activeProfile.compactSize.height, 36)
+        XCTAssertEqual(coordinator.activeProfile.expandedSize.width, 480)
+        XCTAssertEqual(coordinator.activeProfile.expandedSize.height, 190)
+
+        coordinator.resetDimensionsToDefault()
+        XCTAssertFalse(coordinator.hasCustomDimensions)
+    }
+
+    @MainActor
+    func testAppStateNotchDimensionsActionDispatch() {
+        let appState = AppState(debounceInterval: 0.0)
+        let res = appState.dispatch(.setNotchDimensions(
+            compactWidth: 410,
+            compactHeight: 38,
+            expandedWidth: 510,
+            expandedHeight: 210
+        ))
+
+        XCTAssertTrue(res.ok)
+        XCTAssertEqual(NotchCoordinator.shared.currentCompactWidth, 410)
+        XCTAssertEqual(NotchCoordinator.shared.currentCompactHeight, 38)
+        XCTAssertEqual(NotchCoordinator.shared.currentExpandedWidth, 510)
+        XCTAssertEqual(NotchCoordinator.shared.currentExpandedHeight, 210)
+
+        let resetRes = appState.dispatch(.resetNotchDimensions)
+        XCTAssertTrue(resetRes.ok)
+        XCTAssertFalse(NotchCoordinator.shared.hasCustomDimensions)
+    }
+
+    @MainActor
+    func testSeparatedPhysicalAndVirtualDimensions() {
+        let coordinator = NotchCoordinator(profile: .fallback)
+        coordinator.resetDimensionsToDefault()
+
+        // Configure Physical dimensions
+        coordinator.physicalCompactWidth = 240
+        coordinator.physicalCompactHeight = 36
+        coordinator.physicalExpandedWidth = 470
+        coordinator.physicalExpandedHeight = 185
+
+        XCTAssertTrue(coordinator.hasCustomPhysicalDimensions)
+        XCTAssertFalse(coordinator.hasCustomVirtualDimensions)
+
+        // Configure Virtual dimensions independently
+        coordinator.virtualCompactWidth = 380
+        coordinator.virtualCompactHeight = 30
+        coordinator.virtualExpandedWidth = 440
+        coordinator.virtualExpandedHeight = 150
+
+        XCTAssertTrue(coordinator.hasCustomPhysicalDimensions)
+        XCTAssertTrue(coordinator.hasCustomVirtualDimensions)
+
+        // Verify values are strictly isolated
+        XCTAssertEqual(coordinator.physicalCompactWidth, 240)
+        XCTAssertEqual(coordinator.physicalCompactHeight, 36)
+        XCTAssertEqual(coordinator.virtualCompactWidth, 380)
+        XCTAssertEqual(coordinator.virtualCompactHeight, 30)
+
+        // Reset only physical
+        coordinator.resetPhysicalDimensionsToDefault()
+        XCTAssertFalse(coordinator.hasCustomPhysicalDimensions)
+        XCTAssertTrue(coordinator.hasCustomVirtualDimensions)
+        XCTAssertEqual(coordinator.virtualCompactWidth, 380)
+
+        // Reset virtual
+        coordinator.resetVirtualDimensionsToDefault()
+        XCTAssertFalse(coordinator.hasCustomVirtualDimensions)
+        XCTAssertFalse(coordinator.hasCustomDimensions)
+    }
 }

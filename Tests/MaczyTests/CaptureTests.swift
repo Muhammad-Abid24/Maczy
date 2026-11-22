@@ -136,4 +136,17 @@ final class CaptureTests: XCTestCase {
         XCTAssertTrue(result.ok)
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .running)
     }
+
+    func testCaptureWindowTargetZeroEquivalence() {
+        let target = CaptureTarget.window(windowID: 0)
+        XCTAssertEqual(target.modeName, "window")
+    }
+
+    func testAppStateStopScreenRecordingPipelineIntegration() {
+        let appState = AppState()
+        appState.setPermissionState(.screenRecording, state: .granted)
+
+        let result = appState.dispatch(.stopScreenRecording)
+        XCTAssertTrue(result.ok)
+    }
 }

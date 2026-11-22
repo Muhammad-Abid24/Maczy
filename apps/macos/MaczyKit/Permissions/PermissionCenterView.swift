@@ -12,12 +12,29 @@ public struct PermissionCenterView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Header
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Permission Center")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                Text("Maczy adheres strictly to least privilege. Permissions are requested only on explicit user action.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Permission Center")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                    Text("Maczy adheres strictly to least privilege. Permissions are requested only on explicit user action.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    refreshStatuses()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                        Text("Refresh Status")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
             // Notice strip
@@ -47,15 +64,13 @@ public struct PermissionCenterView: View {
         .onAppear {
             refreshStatuses()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshStatuses()
+        }
     }
 
     private func refreshStatuses() {
-        for perm in MaczyPermission.allCases {
-            let status = PermissionManager.shared.checkStatus(for: perm)
-            if status == .granted {
-                appState.setPermissionState(perm, state: .granted)
-            }
-        }
+        appState.refreshPermissions()
     }
 }
 
@@ -117,22 +132,29 @@ struct PermissionCard: View {
                             .font(.system(size: 11))
                             .foregroundColor(MaczyDesignTokens.statusGreen)
                     } else if state == .denied || state == .restricted {
-                        Button("Open System Settings") {
-                            onOpenSettings()
+                        Button("Request Access") {
+                            onGrant()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .tint(MaczyDesignTokens.brandPurple)
 
-                        Text("Permission was previously declined in macOS.")
+                        Button("Open Settings") {
+                            onOpenSettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Text("If removed, click '+' in System Settings and add Maczy from Applications.")
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     } else {
                         Button("Request Access") {
                             onGrant()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                        .tint(MaczyDesignTokens.brandPurple)
 
                         Button("Settings") {
                             onOpenSettings()

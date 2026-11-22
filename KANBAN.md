@@ -18,6 +18,9 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-007-FIX-CAPTURE-PERMISSIONS** Fix Capture & Recording execution + Dashboard permission live synchronization (`fix/dynamic-notch-layout-position`)
+- [x] **MZ-015-SEPARATED-DIMENSIONS** Separated Force Physical Notch & Force Virtual Island width/height dimension adjustments (`fix/dynamic-notch-layout-position`)
+- [x] **MZ-015-CUSTOM-DIMENSIONS** Dynamic Notch height & width customizable dimensions (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-015-FIX-NOTCH-SHAPE** Dynamic Notch expansion shape (top-flush, rounded bottom) & click-outside dismissal (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-031** Cross-surface accessibility audit (`feat/mz-031-accessibility-audit`)
 - [x] **MZ-030** Uninstaller and Optimizer (`feat/mz-030-uninstaller-optimizer`)
@@ -51,6 +54,8 @@
 
 ## History format
 `YYYY-MM-DD | task | from -> to | branch | actual evidence | reviewer`.
+
+2026-11-22 | MZ-007-FIX-CAPTURE-PERMISSIONS | IN PROGRESS -> DONE | fix/dynamic-notch-layout-position | Verified on branch fix/dynamic-notch-layout-position: AppState @Published permissions with live TCC refresh, didBecomeActive observers across Dashboard, windowID=0 frontmost window capture/recording resolution, ScreenCaptureKit Y-coord flipping, CaptureDetailView permission banner & Stop Recording controls, 20 Rust + 206 Swift tests pass, zero warnings | Product Owner
 
 2026-11-22 | MZ-031 | READY -> DONE | feat/mz-031-accessibility-audit | Verified on branch feat/mz-031-accessibility-audit: MaczyAccessibility, 7-module parity between Dashboard and Menu Bar, VoiceOver labels/hints/traits, stable identifiers, reduced motion handling, 20 Rust + 197 Swift tests pass, zero warnings | Product Owner
 

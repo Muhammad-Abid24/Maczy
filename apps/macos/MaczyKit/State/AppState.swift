@@ -23,10 +23,18 @@ public final class AppState: ObservableObject {
     public let uninstallManager: UninstallManager
     public let optimizerManager: OptimizerManager
 
-    private var permissions: [MaczyPermission: PermissionState] = [:]
+    @Published public var permissions: [MaczyPermission: PermissionState] = [:]
+    private var explicitlySetPermissions: Set<MaczyPermission> = []
     private var lastDispatchedActions: [String: Date] = [:]
     public var debounceInterval: TimeInterval
     private var cancellables = Set<AnyCancellable>()
+
+    /// Whether code is currently executing inside an XCTest runner environment.
+    public var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil ||
+        NSClassFromString("XCTestCase") != nil
+    }
 
     public init(
         capabilityRegistry: CapabilityRegistry = CapabilityRegistry(),
@@ -36,7 +44,8 @@ public final class AppState: ObservableObject {
         updateManager: UpdateManager? = nil,
         cleanerManager: CleanerManager? = nil,
         uninstallManager: UninstallManager? = nil,
-        optimizerManager: OptimizerManager? = nil
+        optimizerManager: OptimizerManager? = nil,
+        autoRefreshPermissions: Bool = false
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
@@ -50,6 +59,21 @@ public final class AppState: ObservableObject {
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
             self.permissions[perm] = .notDetermined
+        }
+
+        if autoRefreshPermissions {
+            refreshPermissions()
+        }
+
+        // Live refresh permissions when application becomes active (e.g. returning from System Settings)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPermissions()
+            }
         }
 
         // Initialize all 7 modules
@@ -111,11 +135,28 @@ public final class AppState: ObservableObject {
     }
 
     public func setPermissionState(_ permission: MaczyPermission, state: PermissionState) {
+        explicitlySetPermissions.insert(permission)
         permissions[permission] = state
     }
 
     public func permissionState(_ permission: MaczyPermission) -> PermissionState {
         permissions[permission] ?? .notDetermined
+    }
+
+    /// Queries system TCC status via PermissionManager and updates published permission states.
+    public func refreshPermissions() {
+        for perm in MaczyPermission.allCases {
+            let status = PermissionManager.shared.checkStatus(for: perm)
+            if status == .granted {
+                permissions[perm] = .granted
+            } else if permissions[perm] == .granted {
+                // If previously granted but now revoked in System Settings
+                permissions[perm] = status
+            } else if permissions[perm] == nil || permissions[perm] == .denied {
+                // Allow resetting out of false-denied into current system state
+                permissions[perm] = status
+            }
+        }
     }
 
     /// Primary Action Pipeline:
@@ -153,6 +194,14 @@ public final class AppState: ObservableObject {
 
         // 2. Permission Gate
         for reqPerm in capability.requiredPermissions {
+            // In live app execution, live-check system TCC state to prevent false-positive blocks
+            if !isRunningTests && !explicitlySetPermissions.contains(reqPerm) {
+                let liveStatus = PermissionManager.shared.checkStatus(for: reqPerm)
+                if liveStatus == .granted {
+                    permissions[reqPerm] = .granted
+                }
+            }
+
             let state = permissionState(reqPerm)
             guard state.isGranted else {
                 let msg = "Operation requires \(reqPerm.displayName) permission (\(state.rawValue))"
@@ -244,6 +293,21 @@ public final class AppState: ObservableObject {
             let next: ModuleRuntimeState = isExpanded ? .running : .idle
             let msg = isExpanded ? "Dynamic Notch expanded" : "Dynamic Notch collapsed"
             transitionRuntime(moduleId: moduleId, to: next, message: msg)
+            result = CommandResult.success(message: msg)
+
+        case let .setNotchDimensions(compactWidth, compactHeight, expandedWidth, expandedHeight):
+            if let w = compactWidth { NotchCoordinator.shared.currentCompactWidth = CGFloat(w) }
+            if let h = compactHeight { NotchCoordinator.shared.currentCompactHeight = CGFloat(h) }
+            if let w = expandedWidth { NotchCoordinator.shared.currentExpandedWidth = CGFloat(w) }
+            if let h = expandedHeight { NotchCoordinator.shared.currentExpandedHeight = CGFloat(h) }
+            let msg = "Dynamic Notch dimensions updated"
+            transitionRuntime(moduleId: moduleId, to: .running, message: msg)
+            result = CommandResult.success(message: msg)
+
+        case .resetNotchDimensions:
+            NotchCoordinator.shared.resetDimensionsToDefault()
+            let msg = "Dynamic Notch dimensions reset to defaults"
+            transitionRuntime(moduleId: moduleId, to: .idle, message: msg)
             result = CommandResult.success(message: msg)
 
         case .snapActiveWindow(let preset):

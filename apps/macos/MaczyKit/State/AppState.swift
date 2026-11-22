@@ -185,12 +185,6 @@ public final class AppState: ObservableObject {
 
         // 2. Permission Gate
         for reqPerm in capability.requiredPermissions {
-            // Live-check system TCC state to avoid blocking user when permission was granted in System Settings
-            let liveStatus = PermissionManager.shared.checkStatus(for: reqPerm)
-            if liveStatus == .granted {
-                setPermissionState(reqPerm, state: .granted)
-            }
-
             let state = permissionState(reqPerm)
             guard state.isGranted else {
                 let msg = "Operation requires \(reqPerm.displayName) permission (\(state.rawValue))"

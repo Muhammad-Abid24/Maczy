@@ -406,6 +406,9 @@ public final class AppState: ObservableObject {
             result = CommandResult.success(message: "Scan cancelled")
 
         case .executeCleanerPurge(let confirmed):
+            if confirmed {
+                cleanerManager.isCleanupApproved = true
+            }
             let gateCheck = cleanerManager.requestCleanupExecution(isExplicitlyConfirmed: confirmed)
             if gateCheck.ok {
                 transitionRuntime(moduleId: moduleId, to: .running, message: "Cleaning items to Trash...")

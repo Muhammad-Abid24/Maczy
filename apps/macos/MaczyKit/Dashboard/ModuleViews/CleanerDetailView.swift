@@ -770,14 +770,8 @@ public struct CleanerDetailView: View {
 
                 Button(action: {
                     cleanerManager.isCleanupApproved = true
-                    Task {
-                        do {
-                            _ = try await cleanerManager.executeCleanup()
-                            showCleanupConfirmation = false
-                        } catch {
-                            cleanupErrorMessage = error.localizedDescription
-                        }
-                    }
+                    showCleanupConfirmation = false
+                    _ = appState.dispatch(.executeCleanerPurge(confirmed: true))
                 }) {
                     HStack(spacing: 6) {
                         if cleanerManager.isCleaning {

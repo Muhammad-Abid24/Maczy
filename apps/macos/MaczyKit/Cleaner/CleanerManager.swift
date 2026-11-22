@@ -25,6 +25,12 @@ public final class NativeCleanupExecutionProvider: CleanupExecutionProvider, @un
                 ])
             }
 
+            guard fileManager.isWritableFile(atPath: url.path) else {
+                throw NSError(domain: "MaczyCleaner", code: 513, userInfo: [
+                    NSLocalizedDescriptionKey: "Cannot remove path with insufficient access privileges: \(url.path)"
+                ])
+            }
+
             var resultingURL: NSURL?
             try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
             if let result = resultingURL as URL? {

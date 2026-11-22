@@ -23,10 +23,13 @@ public struct DashboardView: View {
             // MARK: - Sidebar (Compact 64px, Expands to 224px on hover)
             SidebarView(appState: appState)
                 .frame(width: appState.isSidebarExpanded ? MaczyDesignTokens.sidebarWideWidth : MaczyDesignTokens.sidebarCompactWidth)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: appState.isSidebarExpanded)
-                .background(Color(NSColor.windowBackgroundColor).opacity(0.92))
+                .contentShape(Rectangle())
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appState.isSidebarExpanded)
+                .background(Color(NSColor.windowBackgroundColor).opacity(0.95))
                 .onHover { isHovered in
-                    appState.isSidebarExpanded = isHovered
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                        appState.isSidebarExpanded = isHovered
+                    }
                 }
 
             Divider()
@@ -131,102 +134,136 @@ struct SidebarView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        VStack(spacing: 6) {
-            // Brand Mark
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(MaczyDesignTokens.brandPurple)
-                        .frame(width: 36, height: 36)
-                    Image(systemName: "wand.and.stars")
-                        .foregroundColor(.white)
-                        .font(.system(size: 18, weight: .bold))
-                }
-                .frame(width: 48)
-
-                if appState.isSidebarExpanded {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Maczy")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                        Text("Mac be Eazy")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            // Brand Mark (Header - Clickable to return to Overview)
+            Button {
+                appState.selectedTab = .overview
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(MaczyDesignTokens.brandPurple)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "wand.and.stars")
+                            .foregroundColor(.white)
+                            .font(.system(size: 18, weight: .bold))
                     }
-                    Spacer()
+                    .frame(width: appState.isSidebarExpanded ? 36 : 48)
+
+                    if appState.isSidebarExpanded {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Maczy")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                            Text("Mac be Eazy")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
+                .padding(.horizontal, appState.isSidebarExpanded ? 10 : 6)
+                .frame(maxWidth: .infinity, alignment: appState.isSidebarExpanded ? .leading : .center)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(SidebarItemButtonStyle())
             .padding(.top, 14)
-            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
+            .accessibilityLabel("Maczy Overview")
+            .accessibilityHint("Navigates back to the Overview dashboard")
 
             Divider()
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
+
+            // Scrollable Middle List for Navigation Items
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 3) {
+                    // Overview Nav Item
+                    SidebarNavItem(
+                        title: "Overview",
+                        icon: "square.grid.2x2.fill",
+                        isSelected: appState.selectedTab == .overview,
+                        isExpanded: appState.isSidebarExpanded,
+                        accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.overview)
+                    ) {
+                        appState.selectedTab = .overview
+                    }
+
+                    Divider()
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 4)
+
+                    // Navigation Items for all 7 modules
+                    ForEach(MaczyModuleId.allCases) { module in
+                        SidebarNavItem(
+                            title: module.displayName,
+                            icon: module.iconName,
+                            isSelected: appState.selectedTab == .module(module),
+                            isExpanded: appState.isSidebarExpanded,
+                            accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardModuleTab(module)
+                        ) {
+                            appState.selectedTab = .module(module)
+                            appState.selectedModule = module
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            Divider()
+                .padding(.horizontal, 8)
                 .padding(.vertical, 4)
 
-            // Overview Nav Item
-            SidebarNavItem(
-                title: "Overview",
-                icon: "square.grid.2x2.fill",
-                isSelected: appState.selectedTab == .overview,
-                isExpanded: appState.isSidebarExpanded,
-                accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.overview)
-            ) {
-                appState.selectedTab = .overview
-            }
-
-            Divider()
-                .padding(.vertical, 2)
-
-            // Navigation Items for all 7 modules
-            ForEach(MaczyModuleId.allCases) { module in
+            // Bottom Settings & Permissions
+            VStack(spacing: 3) {
                 SidebarNavItem(
-                    title: module.displayName,
-                    icon: module.iconName,
-                    isSelected: appState.selectedTab == .module(module),
+                    title: "Permissions",
+                    icon: "hand.raised.fill",
+                    isSelected: appState.selectedTab == .permissions,
                     isExpanded: appState.isSidebarExpanded,
-                    accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardModuleTab(module)
+                    accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.permissions)
                 ) {
-                    appState.selectedTab = .module(module)
+                    appState.selectedTab = .permissions
                 }
-            }
 
-            Spacer()
-
-            Divider()
-                .padding(.vertical, 2)
-
-            // Settings & Permissions Nav Items
-            SidebarNavItem(
-                title: "Permissions",
-                icon: "hand.raised.fill",
-                isSelected: appState.selectedTab == .permissions,
-                isExpanded: appState.isSidebarExpanded,
-                accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.permissions)
-            ) {
-                appState.selectedTab = .permissions
-            }
-
-            SidebarNavItem(
-                title: "Settings",
-                icon: "gearshape.fill",
-                isSelected: appState.selectedTab == .settings,
-                isExpanded: appState.isSidebarExpanded,
-                accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.settings)
-            ) {
-                appState.selectedTab = .settings
-            }
-
-            // Footer note
-            if appState.isSidebarExpanded {
-                VStack(spacing: 2) {
-                    Text("Maczy v0.1.0")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                    Text("Apple Silicon Native")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary.opacity(0.8))
+                SidebarNavItem(
+                    title: "Settings",
+                    icon: "gearshape.fill",
+                    isSelected: appState.selectedTab == .settings,
+                    isExpanded: appState.isSidebarExpanded,
+                    accessibilityIdentifier: MaczyAccessibilityIdentifier.dashboardTab(.settings)
+                ) {
+                    appState.selectedTab = .settings
                 }
-                .padding(.bottom, 10)
+
+                // Footer note
+                if appState.isSidebarExpanded {
+                    VStack(spacing: 2) {
+                        Text("Maczy v0.1.0")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text("Apple Silicon Native")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                }
             }
         }
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Custom responsive button style for sidebar items providing immediate visual click/press feedback.
+struct SidebarItemButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
@@ -238,29 +275,50 @@ struct SidebarNavItem: View {
     var accessibilityIdentifier: String? = nil
     let action: () -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 15))
-                    .frame(width: 48, height: 36)
-                    .foregroundColor(isSelected ? MaczyDesignTokens.brandPurple : .primary)
+                    .frame(width: isExpanded ? 24 : 36, height: 36)
+                    .foregroundColor(
+                        isSelected
+                            ? MaczyDesignTokens.brandPurple
+                            : (isHovered ? .primary : .secondary)
+                    )
 
                 if isExpanded {
                     Text(title)
                         .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(isSelected ? MaczyDesignTokens.brandPurple : .primary)
+                        .foregroundColor(
+                            isSelected
+                                ? MaczyDesignTokens.brandPurple
+                                : (isHovered ? .primary : .primary.opacity(0.85))
+                        )
                         .lineLimit(1)
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
             }
+            .padding(.horizontal, isExpanded ? 10 : 0)
+            .frame(maxWidth: .infinity, alignment: isExpanded ? .leading : .center)
+            .frame(height: 36)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? MaczyDesignTokens.brandPurpleSoft : Color.clear)
+                    .fill(
+                        isSelected
+                            ? MaczyDesignTokens.brandPurpleSoft
+                            : (isHovered ? Color.primary.opacity(0.06) : Color.clear)
+                    )
             )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SidebarItemButtonStyle())
         .padding(.horizontal, 6)
+        .onHover { hovering in
+            isHovered = hovering
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
         .accessibilityHint(isSelected ? "Currently selected tab" : "Switch to \(title) tab")

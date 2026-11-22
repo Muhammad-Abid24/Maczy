@@ -132,22 +132,29 @@ struct PermissionCard: View {
                             .font(.system(size: 11))
                             .foregroundColor(MaczyDesignTokens.statusGreen)
                     } else if state == .denied || state == .restricted {
-                        Button("Open System Settings") {
-                            onOpenSettings()
+                        Button("Request Access") {
+                            onGrant()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .tint(MaczyDesignTokens.brandPurple)
 
-                        Text("Permission was previously declined in macOS.")
+                        Button("Open Settings") {
+                            onOpenSettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Text("If removed, click '+' in System Settings and add Maczy from Applications.")
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     } else {
                         Button("Request Access") {
                             onGrant()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                        .tint(MaczyDesignTokens.brandPurple)
 
                         Button("Settings") {
                             onOpenSettings()

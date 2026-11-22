@@ -3,6 +3,7 @@ import AppKit
 import AVFoundation
 import CoreGraphics
 import ApplicationServices
+import ScreenCaptureKit
 
 /// Manages macOS TCC system permission checks, explicit requests, and settings deep linking.
 public final class PermissionManager: @unchecked Sendable {
@@ -38,6 +39,25 @@ public final class PermissionManager: @unchecked Sendable {
         if let url = settingsURL(for: permission) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Cleanly relaunches the application to pick up new macOS TCC tokens after toggling permissions.
+    @MainActor
+    public func relaunchApp() {
+        let appURL = Bundle.main.bundleURL
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-n", appURL.path]
+        try? task.run()
+        NSApplication.shared.terminate(nil)
+    }
+
+    /// Resets TCC ScreenCapture entry for com.maczy.app so macOS triggers a fresh authorization prompt.
+    public func resetTCCScreenCapture() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = ["reset", "ScreenCapture", "com.maczy.app"]
+        try? task.run()
     }
 
     /// Checks the current system permission authorization status.
@@ -81,8 +101,25 @@ public final class PermissionManager: @unchecked Sendable {
         switch permission {
         case .screenRecording:
             if #available(macOS 10.15, *) {
-                let granted = CGRequestScreenCaptureAccess()
-                return granted ? .granted : .denied
+                if CGPreflightScreenCaptureAccess() {
+                    return .granted
+                }
+
+                // 1. Trigger system prompt dialog
+                _ = CGRequestScreenCaptureAccess()
+
+                // 2. Query ScreenCaptureKit to force macOS 14+ TCC to register bundle in System Settings
+                if #available(macOS 14.0, *) {
+                    _ = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                }
+
+                // 3. Re-check if access is now granted
+                if CGPreflightScreenCaptureAccess() {
+                    return .granted
+                }
+
+                // Return notDetermined rather than denied, because user must toggle it in System Settings
+                return .notDetermined
             }
             return .granted
 

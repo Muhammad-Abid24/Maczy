@@ -138,7 +138,13 @@ public final class AppState: ObservableObject {
     public func refreshPermissions() {
         for perm in MaczyPermission.allCases {
             let status = PermissionManager.shared.checkStatus(for: perm)
-            if status != .notDetermined || permissions[perm] == nil {
+            if status == .granted {
+                permissions[perm] = .granted
+            } else if permissions[perm] == .granted {
+                // If previously granted but now revoked in System Settings
+                permissions[perm] = status
+            } else if permissions[perm] == nil || permissions[perm] == .denied {
+                // Allow resetting out of false-denied into current system state
                 permissions[perm] = status
             }
         }

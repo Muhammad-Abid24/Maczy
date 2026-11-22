@@ -40,39 +40,71 @@ public struct CaptureDetailView: View {
 
             // Permission Warning Banner if Screen Recording is not granted
             if !hasScreenRecordingPermission {
-                HStack(alignment: .center, spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(MaczyDesignTokens.statusOrange)
-                        .font(.system(size: 18))
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(MaczyDesignTokens.statusOrange)
+                            .font(.system(size: 20))
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Screen Recording Permission Required")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.primary)
-                        Text("macOS requires explicit authorization in System Settings to capture screenshots and record the screen.")
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Screen Recording Permission Required")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.primary)
+                            Text("macOS requires explicit authorization to capture screenshots and record video.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Request Access") {
+                            Task {
+                                _ = await PermissionManager.shared.requestAuthorization(for: .screenRecording)
+                                await MainActor.run {
+                                    appState.refreshPermissions()
+                                }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(MaczyDesignTokens.brandPurple)
+                        .controlSize(.small)
+
+                        Button("Open Settings") {
+                            PermissionManager.shared.openSettings(for: .screenRecording)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button("Refresh") {
+                            appState.refreshPermissions()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
+                    Divider()
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
+                        Text("Not in System Settings list? Click '+' below the list in System Settings and select Maczy from Applications. If toggled ON, restart Maczy to apply.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Relaunch App") {
+                            PermissionManager.shared.relaunchApp()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(MaczyDesignTokens.brandPurple)
                     }
-
-                    Spacer()
-
-                    Button("Open Settings") {
-                        PermissionManager.shared.openSettings(for: .screenRecording)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Button("Refresh Status") {
-                        appState.refreshPermissions()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
                 .padding(12)
                 .background(MaczyDesignTokens.statusOrange.opacity(0.12))
-                .cornerRadius(8)
+                .cornerRadius(10)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 10)
                         .stroke(MaczyDesignTokens.statusOrange.opacity(0.35), lineWidth: 1)
                 )
             }

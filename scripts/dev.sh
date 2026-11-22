@@ -26,6 +26,8 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Maczy</string>
     <key>CFBundleExecutable</key>
     <string>Maczy</string>
     <key>CFBundleIdentifier</key>
@@ -44,12 +46,27 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <string>14.0</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Maczy requires Screen Recording permission to capture screenshots and record screen video.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Maczy requires Microphone access to record system and voice audio during screen recordings.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Maczy requires Camera access for smart unlock feasibility checks.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Maczy requires Apple Events permission to interact with system windows.</string>
 </dict>
 </plist>
 EOF
 
-codesign -s - -f "$APP_DIR" > /dev/null 2>&1
+codesign -s - -f --deep "$APP_DIR" > /dev/null 2>&1
 
-echo "==> Launching .build/Maczy.app..."
-open "$APP_DIR"
+USER_APPS="$HOME/Applications"
+mkdir -p "$USER_APPS"
+rm -rf "$USER_APPS/Maczy.app"
+cp -R "$APP_DIR" "$USER_APPS/Maczy.app"
+codesign -s - -f --deep "$USER_APPS/Maczy.app" > /dev/null 2>&1
+
+echo "==> Installed to $USER_APPS/Maczy.app and .build/Maczy.app"
+echo "==> Launching $USER_APPS/Maczy.app..."
+open "$USER_APPS/Maczy.app"
 echo "==> Maczy is running!"

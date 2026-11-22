@@ -89,4 +89,10 @@ final class PermissionTests: XCTestCase {
         XCTAssertTrue(notificationReceived)
         cancellable.cancel()
     }
+
+    func testRequestAuthorizationNonThrowing() async {
+        let manager = PermissionManager.shared
+        let state = await manager.requestAuthorization(for: .screenRecording)
+        XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(state))
+    }
 }

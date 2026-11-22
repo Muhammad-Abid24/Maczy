@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-public struct ProcessResourceInfo: Identifiable, Equatable, Sendable {
+public struct ProcessResourceInfo: Identifiable, Equatable, @unchecked Sendable {
     public let id: pid_t
     public let name: String
     public let bundleIdentifier: String?

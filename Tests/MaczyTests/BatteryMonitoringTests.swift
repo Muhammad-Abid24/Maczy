@@ -367,4 +367,58 @@ final class BatteryMonitoringTests: XCTestCase {
             XCTAssertEqual(snapshot.powerSource, .acPower)
         }
     }
+
+    @MainActor
+    func testAdapterControlAndDischargeToCeiling() {
+        let mockBackend = MockChargeLimitBackend(isSupported: true, isDaemonAvailable: true, initialLimit: 85)
+        let manager = ChargeLimitManager(backend: mockBackend, initiallyApproved: true)
+
+        XCTAssertTrue(manager.isAdapterEnabled)
+        XCTAssertFalse(manager.isDischargingToCeiling)
+
+        // 1. Start discharge to ceiling
+        let resStart = manager.startDischargeToCeiling()
+        guard case .success(let ok) = resStart, ok else {
+            XCTFail("Expected success starting discharge")
+            return
+        }
+        XCTAssertFalse(manager.isAdapterEnabled)
+        XCTAssertTrue(manager.isDischargingToCeiling)
+        XCTAssertFalse(mockBackend.simulatedAdapterEnabled)
+
+        // 2. Stop discharge to ceiling
+        let resStop = manager.stopDischargeToCeiling()
+        guard case .success(let okStop) = resStop, okStop else {
+            XCTFail("Expected success stopping discharge")
+            return
+        }
+        XCTAssertTrue(manager.isAdapterEnabled)
+        XCTAssertFalse(manager.isDischargingToCeiling)
+        XCTAssertTrue(mockBackend.simulatedAdapterEnabled)
+
+        // 3. Unapproved manager must fail closed
+        let unapproved = ChargeLimitManager(backend: mockBackend, initiallyApproved: false)
+        let unapprovedRes = unapproved.startDischargeToCeiling()
+        guard case .failure(let err) = unapprovedRes else {
+            XCTFail("Expected failure on unapproved adapter control")
+            return
+        }
+        XCTAssertEqual(err, .authorizationRequired("Setting power adapter state requires MZ-014 backend verification. Write controls gated."))
+    }
+
+    @MainActor
+    func testRealtimeMonitoringLifecycle() {
+        let monitor = BatteryMonitor.shared
+        monitor.startMonitoring(intervalSeconds: 1.0)
+        monitor.refresh()
+        XCTAssertNotNil(monitor.currentSnapshot)
+        monitor.stopMonitoring()
+    }
+
+    func testChargingStateRealtimeDisplayStrings() {
+        XCTAssertEqual(ChargingState.charging.rawValue, "AC Connected (Charging)")
+        XCTAssertEqual(ChargingState.notCharging.rawValue, "AC Connected (Not Charging)")
+        XCTAssertEqual(ChargingState.discharging.rawValue, "Discharging")
+        XCTAssertEqual(ChargingState.charged.rawValue, "Fully Charged")
+    }
 }

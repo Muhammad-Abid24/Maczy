@@ -28,7 +28,7 @@ public struct BatteryDetailView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            // Header with Refresh
+            // Header with Real-Time Indicator (No Manual Refresh Button)
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Battery Guardian")
@@ -38,16 +38,18 @@ public struct BatteryDetailView: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Button(action: {
-                    _ = appState.dispatch(.refreshBatteryTelemetry)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise")
-                        Text("Refresh")
-                    }
-                    .font(.system(size: 11, weight: .medium))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(MaczyDesignTokens.statusGreen)
+                        .frame(width: 8, height: 8)
+                    Text("Live Real-Time")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(MaczyDesignTokens.statusGreen)
                 }
-                .buttonStyle(.bordered)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(MaczyDesignTokens.statusGreen.opacity(0.12))
+                .cornerRadius(6)
             }
 
             // Primary Battery Stage Card
@@ -254,6 +256,65 @@ public struct BatteryDetailView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .padding(.top, 2)
+                }
+
+                // Ceiling Overshoot & Discharge Control
+                if let eff = chargeLimitManager.effectiveLimit, battery.stateOfCharge > eff && battery.isBatteryPresent {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(MaczyDesignTokens.statusOrange)
+                            .font(.system(size: 15))
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Battery (\(battery.stateOfCharge)%) is above active ceiling (\(eff)%)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(MaczyDesignTokens.statusOrange)
+                                Spacer()
+                                if chargeLimitManager.isDischargingToCeiling {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(MaczyDesignTokens.brandPurple).frame(width: 6, height: 6)
+                                        Text("Discharging to \(eff)%...")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                                    }
+                                }
+                            }
+                            Text("Charging is stopped (SMC bypass engaged). The hardware will hold at \(battery.stateOfCharge)% and not charge further. To lower charge to \(eff)%, unplug the adapter or use automatic discharge below.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+
+                            HStack(spacing: 8) {
+                                if chargeLimitManager.isDischargingToCeiling {
+                                    Button(action: {
+                                        _ = chargeLimitManager.stopDischargeToCeiling()
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "powerplug.fill")
+                                            Text("Resume Power Adapter")
+                                        }
+                                        .font(.system(size: 11, weight: .semibold))
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(MaczyDesignTokens.brandPurple)
+                                } else if chargeLimitManager.isHardwareWriteApproved {
+                                    Button(action: {
+                                        _ = chargeLimitManager.startDischargeToCeiling()
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "arrow.down.to.line")
+                                            Text("Discharge to \(eff)% on Battery")
+                                        }
+                                        .font(.system(size: 11, weight: .semibold))
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                            .padding(.top, 2)
+                        }
+                    }
+                    .padding(10)
+                    .background(MaczyDesignTokens.statusOrange.opacity(0.1))
+                    .cornerRadius(8)
                 }
             }
 

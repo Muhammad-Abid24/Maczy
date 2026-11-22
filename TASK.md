@@ -6,6 +6,29 @@
 ### Completed this task
 - [x] **Switched to Main & Pulled**: Checked out `main` and pulled latest upstream commits (`ffb36c6`).
 - [x] **Created New Feature Branch**: Created branch `feat/mz-014-charge-limit-controls` directly off updated `main`.
+- [x] **Real-Time Telemetry & Zero Refresh Button (`BatteryMonitor.swift`, `BatteryDetailView.swift`)**:
+  - Implemented event-driven IOKit Power Sources RunLoop Source registration (`IOPSNotificationCreateRunLoopSource` on `CFRunLoopGetMain()`) for zero-latency notifications on charger plug/unplug, charging state toggle, and battery percentage changes.
+  - Added periodic 2.0-second fallback timer in `BatteryMonitor` for continuous cell temperature, voltage, and amperage telemetry.
+  - Started monitoring automatically upon app initialization (`autoStart && !isRunningTests`).
+  - **Completely removed manual Refresh button** from Battery Guardian header; replaced with live pulsing "Live Real-Time" telemetry indicator badge.
+  - Refined charging state status strings: dynamically displays `AC Connected (Charging)` vs `AC Connected (Not Charging)` vs `Discharging` in real-time.
+- [x] **Batt Daemon Integration & Ceiling Enforcement (`ChargeLimitBackend.swift`)**:
+  - Connected to `/var/run/batt.sock` with HTTP `PUT /limit` protocol and accepted `201 Created` / `200 OK`.
+  - Added `writeAdapter(enabled: Bool)` to `BattDaemonClient` via `PUT /adapter`.
+  - Added `readAdapterStatus` and `writeAdapter` to `ChargeLimitBackendProtocol` and `NativeSMCChargeLimitBackend`.
+  - Persisted user approval for hardware write tests in `UserDefaults` so authorization persists across sessions.
+- [x] **Ceiling Overshoot & Discharge Control Handling (`BatteryDetailView.swift`, `ChargeLimitManager.swift`)**:
+  - Added overshoot banner when current battery percentage exceeds the active charge limit (e.g. 90% > 85%).
+  - Clarified SMC power bypass behavior: explains that charging is stopped (0 mA draw) and hardware will hold at current SoC without further charging.
+  - Added "Discharge to Ceiling (85%) on Battery" action calling `startDischargeToCeiling()` (temporarily disabling power adapter).
+  - Added auto-termination in `AppState`: once battery discharges to effective limit, the power adapter is automatically re-enabled (`stopDischargeToCeiling()`) and locks at ceiling.
+- [x] **Testing & CI Verification**:
+  - Added tests in `BatteryMonitoringTests.swift`:
+    - `testAdapterControlAndDischargeToCeiling`: verifies adapter toggle, discharge state, and fail-closed authorization check.
+    - `testRealtimeMonitoringLifecycle`: verifies start/stop monitoring lifecycle and runloop source safety.
+    - `testChargingStateRealtimeDisplayStrings`: verifies display strings for AC Connected (Charging), AC Connected (Not Charging), and Discharging.
+  - Executed `./scripts/ci.sh`: Rust fmt, clippy (0 warnings), 21 Rust tests, 228 Swift tests pass, Xcode arm64 build, and ad-hoc codesign passed in 36s.
+  - Executed `./scripts/dev.sh`: Rebuilt, codesigned, and re-launched `/Users/muhammadabid/Applications/Maczy.app`.
 - [x] **Backend & Manager Architecture (`ChargeLimitBackend.swift`)**:
   - Defined `ChargeLimitBackendProtocol` with `isSupported`, `hardwareModel`, `readCurrentLimit()`, and `writeLimit(percentage)`.
   - Implemented `NativeSMCChargeLimitBackend`: queries sysctl `hw.model`, detects desktop vs portable Macs, checks authorization / privilege level, verifies ceiling write, and persists preference in `UserDefaults`.

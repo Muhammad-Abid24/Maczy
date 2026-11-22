@@ -76,6 +76,23 @@ public struct BattDaemonClient: Sendable {
         return body.lowercased() == "true"
     }
 
+    public static func writeAdapter(enabled: Bool, path: String = defaultSocketPath) -> Result<Bool, ChargeLimitError> {
+        guard isSocketAvailable(path: path) else {
+            return .failure(.daemonUnavailable("batt daemon socket not found at \(path)"))
+        }
+
+        let body = enabled ? "true" : "false"
+        guard let response = sendHttpRequest(method: "PUT", endpoint: "/adapter", body: body, path: path) else {
+            return .failure(.writeFailed("No response from batt daemon"))
+        }
+
+        if response.contains("200 OK") || response.contains("201 Created") || response.contains("204 No Content") {
+            return .success(enabled)
+        } else {
+            return .failure(.writeFailed("Daemon returned non-success response"))
+        }
+    }
+
     public static func writeLimit(_ percentage: Int, path: String = defaultSocketPath) -> Result<Int, ChargeLimitError> {
         guard [80, 85, 90, 95, 100].contains(percentage) else {
             return .failure(.invalidPercentage(percentage))
@@ -147,6 +164,15 @@ public protocol ChargeLimitBackendProtocol: Sendable {
     var isDaemonAvailable: Bool { get }
     func readEffectiveLimit() -> Int?
     func writeLimit(_ percentage: Int, isExplicitlyApproved: Bool) -> Result<Int, ChargeLimitError>
+    func readAdapterStatus() -> Bool?
+    func writeAdapter(enabled: Bool, isExplicitlyApproved: Bool) -> Result<Bool, ChargeLimitError>
+}
+
+extension ChargeLimitBackendProtocol {
+    public func readAdapterStatus() -> Bool? { nil }
+    public func writeAdapter(enabled: Bool, isExplicitlyApproved: Bool) -> Result<Bool, ChargeLimitError> {
+        .failure(.unsupportedHardware(hardwareModel))
+    }
 }
 
 /// Native macOS / Apple Silicon backend communicating with battery charge control.
@@ -229,6 +255,29 @@ public struct NativeSMCChargeLimitBackend: ChargeLimitBackendProtocol, @unchecke
             return .failure(error)
         }
     }
+
+    public func readAdapterStatus() -> Bool? {
+        guard isSupported else { return nil }
+        return BattDaemonClient.readAdapterStatus()
+    }
+
+    public func writeAdapter(enabled: Bool, isExplicitlyApproved: Bool) -> Result<Bool, ChargeLimitError> {
+        guard isExplicitlyApproved else {
+            return .failure(.authorizationRequired(
+                "Setting power adapter state requires MZ-014 backend verification. Write controls gated."
+            ))
+        }
+
+        guard isSupported else {
+            return .failure(.unsupportedHardware(hardwareModel))
+        }
+
+        guard isDaemonAvailable else {
+            return .failure(.daemonUnavailable("batt daemon socket (/var/run/batt.sock) not reachable"))
+        }
+
+        return BattDaemonClient.writeAdapter(enabled: enabled)
+    }
 }
 
 /// Mock backend for verified unit testing of limit selection (80/85/90/95/100),
@@ -240,6 +289,8 @@ public final class MockChargeLimitBackend: ChargeLimitBackendProtocol, @unchecke
     public var simulatedLimit: Int?
     public var writeCount: Int = 0
     public var lastWrittenLimit: Int?
+    public var simulatedAdapterEnabled: Bool = true
+    public var adapterWriteCount: Int = 0
 
     public init(
         isSupported: Bool = true,
@@ -279,6 +330,29 @@ public final class MockChargeLimitBackend: ChargeLimitBackendProtocol, @unchecke
         simulatedLimit = percentage
         return .success(percentage)
     }
+
+    public func readAdapterStatus() -> Bool? {
+        guard isSupported else { return nil }
+        return simulatedAdapterEnabled
+    }
+
+    public func writeAdapter(enabled: Bool, isExplicitlyApproved: Bool) -> Result<Bool, ChargeLimitError> {
+        guard isExplicitlyApproved else {
+            return .failure(.authorizationRequired(
+                "Setting power adapter state requires MZ-014 backend verification. Write controls gated."
+            ))
+        }
+        guard isSupported else {
+            return .failure(.unsupportedHardware(hardwareModel))
+        }
+        guard isDaemonAvailable else {
+            return .failure(.daemonUnavailable("Mock daemon unavailable"))
+        }
+
+        adapterWriteCount += 1
+        simulatedAdapterEnabled = enabled
+        return .success(enabled)
+    }
 }
 
 /// Main-actor coordinator managing charge ceiling threshold selection, readback, and power bypass detection (MZ-014).
@@ -301,6 +375,12 @@ public final class ChargeLimitManager: ObservableObject {
     /// Whether the user has explicitly authorized live hardware write control testing.
     @Published public var isHardwareWriteApproved: Bool = false
 
+    /// Whether power adapter input is currently enabled.
+    @Published public private(set) var isAdapterEnabled: Bool = true
+
+    /// Whether temporary discharge to reach ceiling threshold is active.
+    @Published public private(set) var isDischargingToCeiling: Bool = false
+
     /// Truthful explanation of the current charging control status.
     @Published public private(set) var statusMessage: String
 
@@ -312,13 +392,18 @@ public final class ChargeLimitManager: ObservableObject {
     public init(
         backend: ChargeLimitBackendProtocol = NativeSMCChargeLimitBackend(),
         userDefaults: UserDefaults = .standard,
-        initiallyApproved: Bool = false
+        initiallyApproved: Bool? = nil
     ) {
         self.backend = backend
         self.userDefaults = userDefaults
         self.isSupported = backend.isSupported
         self.isDaemonAvailable = backend.isDaemonAvailable
-        self.isHardwareWriteApproved = initiallyApproved
+
+        if let explicit = initiallyApproved {
+            self.isHardwareWriteApproved = explicit
+        } else {
+            self.isHardwareWriteApproved = userDefaults.bool(forKey: "maczy_charge_limit_approved")
+        }
 
         if backend.isSupported {
             let eff = backend.readEffectiveLimit()
@@ -330,6 +415,8 @@ public final class ChargeLimitManager: ObservableObject {
                 self.requestedLimit = eff
             }
 
+            self.isAdapterEnabled = backend.readAdapterStatus() ?? true
+
             if let eff = eff {
                 self.statusMessage = "Effective ceiling: \(eff)% (Readback verified via backend)"
             } else {
@@ -338,6 +425,7 @@ public final class ChargeLimitManager: ObservableObject {
         } else {
             self.requestedLimit = nil
             self.effectiveLimit = nil
+            self.isAdapterEnabled = true
             self.statusMessage = "Safe unsupported state: hardware charge limiting is not supported on this device."
         }
     }
@@ -364,12 +452,42 @@ public final class ChargeLimitManager: ObservableObject {
         if backend.isSupported {
             self.effectiveLimit = backend.readEffectiveLimit()
             self.isDaemonAvailable = backend.isDaemonAvailable
+            if let adapter = backend.readAdapterStatus() {
+                self.isAdapterEnabled = adapter
+            }
         }
     }
 
     /// Set user approval for hardware charging control tests.
     public func setHardwareWriteApproved(_ approved: Bool) {
         self.isHardwareWriteApproved = approved
+        userDefaults.set(approved, forKey: "maczy_charge_limit_approved")
+    }
+
+    /// Starts discharging by disabling the power adapter until battery drops to effective ceiling.
+    public func startDischargeToCeiling() -> Result<Bool, ChargeLimitError> {
+        let res = backend.writeAdapter(enabled: false, isExplicitlyApproved: isHardwareWriteApproved)
+        switch res {
+        case .success:
+            self.isAdapterEnabled = false
+            self.isDischargingToCeiling = true
+            return .success(true)
+        case .failure(let err):
+            return .failure(err)
+        }
+    }
+
+    /// Stops temporary discharging and re-enables power adapter.
+    public func stopDischargeToCeiling() -> Result<Bool, ChargeLimitError> {
+        let res = backend.writeAdapter(enabled: true, isExplicitlyApproved: isHardwareWriteApproved)
+        switch res {
+        case .success:
+            self.isAdapterEnabled = true
+            self.isDischargingToCeiling = false
+            return .success(true)
+        case .failure(let err):
+            return .failure(err)
+        }
     }
 
     /// Compute whether hardware power-path bypass is active based on live battery telemetry.

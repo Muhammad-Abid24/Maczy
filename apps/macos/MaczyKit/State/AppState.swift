@@ -113,12 +113,22 @@ public final class AppState: ObservableObject {
             .sink { [weak self] newSnapshot in
                 guard let self = self else { return }
                 self.batterySnapshot = newSnapshot
+                self.chargeLimitManager.refreshReadback()
+                if self.chargeLimitManager.isDischargingToCeiling {
+                    if let eff = self.chargeLimitManager.effectiveLimit, newSnapshot.stateOfCharge <= eff {
+                        _ = self.chargeLimitManager.stopDischargeToCeiling()
+                    }
+                }
                 self.alwaysOnManager.checkBatterySafety(
                     percentage: Double(newSnapshot.stateOfCharge),
                     isCharging: newSnapshot.isACConnected || newSnapshot.isCharging
                 )
             }
             .store(in: &cancellables)
+
+        if !isRunningTests {
+            BatteryMonitor.shared.startMonitoring()
+        }
 
         // Bind Always On session state to module runtime
         self.alwaysOnManager.$activeSession

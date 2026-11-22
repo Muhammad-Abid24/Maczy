@@ -7,7 +7,7 @@ public enum NotchGeometry {
     public static let defaultVirtualCompactSize = CGSize(width: 180, height: 32)
     public static let defaultVirtualExpandedSize = CGSize(width: 420, height: 160)
     public static let defaultPhysicalExpandedSize = CGSize(width: 460, height: 180)
-    public static let defaultVirtualTopPadding: CGFloat = 12.0
+    public static let defaultVirtualTopPadding: CGFloat = 0.0
 
     /// Calculate physical notch rect from raw screen parameters.
     public static func calculatePhysicalNotchRect(

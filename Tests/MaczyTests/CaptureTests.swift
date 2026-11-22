@@ -6,7 +6,7 @@ import AppKit
 @MainActor
 final class CaptureTests: XCTestCase {
 
-    private func createTestCGImage(width: Int = 120, height: Int = 80) -> CGImage {
+    private func createTestCGImage(width: Int = 120, height: Int = 80, red: CGFloat = 0.44, green: CGFloat = 0.17, blue: CGFloat = 0.88) -> CGImage {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
         let context = CGContext(
@@ -19,8 +19,8 @@ final class CaptureTests: XCTestCase {
             bitmapInfo: bitmapInfo.rawValue
         )!
 
-        // Fill background with brand purple color
-        context.setFillColor(red: 0.44, green: 0.17, blue: 0.88, alpha: 1.0)
+        // Fill background with color
+        context.setFillColor(red: red, green: green, blue: blue, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         return context.makeImage()!
@@ -182,5 +182,55 @@ final class CaptureTests: XCTestCase {
         appState.lastCapturedImage = testImage
         XCTAssertNotNil(appState.lastCapturedImage)
         XCTAssertEqual(appState.lastCapturedImage?.width, 100)
+    }
+
+    func testAreaSelectionPurposeAndScrollingHints() {
+        let areaOverlay = AreaSelectionOverlayWindowController(purpose: .captureArea)
+        XCTAssertEqual(areaOverlay.purpose, .captureArea)
+
+        let scrollOverlay = AreaSelectionOverlayWindowController(purpose: .scrollingCapture)
+        XCTAssertEqual(scrollOverlay.purpose, .scrollingCapture)
+    }
+
+    func testScrollingControlHUDPresentationAndDismiss() {
+        let hud = ScrollingControlHUD.shared
+        let targetRect = CGRect(x: 100, y: 100, width: 600, height: 400)
+
+        hud.present(anchoredTo: targetRect)
+        XCTAssertTrue(hud.isVisible)
+        XCTAssertEqual(hud.level, NSWindow.Level(Int(CGWindowLevelForKey(.maximumWindow))))
+
+        hud.dismiss()
+    }
+
+    func testScrollingCaptureCoordinatorInteractiveSessionAndAutoScroll() {
+        let coordinator = ScrollingCaptureCoordinator.shared
+        coordinator.startSession()
+
+        XCTAssertFalse(coordinator.isAutoScrolling)
+        XCTAssertEqual(coordinator.activeSliceCount, 0)
+        XCTAssertEqual(coordinator.estimatedTotalHeight, 0)
+
+        coordinator.toggleAutoScroll()
+        XCTAssertTrue(coordinator.isAutoScrolling)
+
+        coordinator.toggleAutoScroll()
+        XCTAssertFalse(coordinator.isAutoScrolling)
+
+        let slice1 = createTestCGImage(width: 200, height: 100, red: 0.1, green: 0.2, blue: 0.8)
+        let slice2 = createTestCGImage(width: 200, height: 100, red: 0.8, green: 0.2, blue: 0.1)
+
+        coordinator.appendSlice(slice1)
+        XCTAssertEqual(coordinator.activeSliceCount, 1)
+        XCTAssertEqual(coordinator.estimatedTotalHeight, 100)
+
+        coordinator.appendSlice(slice2)
+        XCTAssertEqual(coordinator.activeSliceCount, 2)
+        XCTAssertEqual(coordinator.estimatedTotalHeight, 200)
+
+        coordinator.cancelSession()
+        XCTAssertEqual(coordinator.activeSliceCount, 0)
+        XCTAssertEqual(coordinator.estimatedTotalHeight, 0)
+        XCTAssertFalse(coordinator.isAutoScrolling)
     }
 }

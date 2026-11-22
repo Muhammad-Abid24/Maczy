@@ -2,6 +2,12 @@ import Foundation
 import AppKit
 import CoreGraphics
 
+/// Purpose of the area selection session.
+public enum AreaSelectionPurpose: Sendable {
+    case captureArea
+    case scrollingCapture
+}
+
 /// Delegate receiving user selection coordinates from the interactive overlay.
 @MainActor
 public protocol AreaSelectionOverlayDelegate: AnyObject {
@@ -13,13 +19,15 @@ public protocol AreaSelectionOverlayDelegate: AnyObject {
 @MainActor
 public final class AreaSelectionOverlayWindowController: NSWindowController {
     public weak var delegate: AreaSelectionOverlayDelegate?
+    public let purpose: AreaSelectionPurpose
 
     fileprivate var startPoint: CGPoint = .zero
     fileprivate var currentPoint: CGPoint = .zero
     fileprivate var isDragging: Bool = false
     private let targetScreen: NSScreen
 
-    public init(screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) {
+    public init(screen: NSScreen = NSScreen.main ?? NSScreen.screens[0], purpose: AreaSelectionPurpose = .captureArea) {
+        self.purpose = purpose
         self.targetScreen = screen
         let window = NSWindow(
             contentRect: screen.frame,
@@ -136,6 +144,28 @@ private final class AreaSelectionCanvasView: NSView {
         NSColor.black.withAlphaComponent(0.28).setFill()
         bounds.fill()
 
+        // Top instruction pill
+        let isScrolling = (controller.purpose == .scrollingCapture)
+        let hintText = isScrolling
+            ? "Drag to select scrolling capture region • Press ESC to cancel"
+            : "Drag to select screenshot area • Press ESC to cancel"
+        let hintFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let hintAttrs: [NSAttributedString.Key: Any] = [
+            .font: hintFont,
+            .foregroundColor: NSColor.white
+        ]
+        let hintSize = hintText.size(withAttributes: hintAttrs)
+        let topBarRect = CGRect(
+            x: (bounds.width - hintSize.width - 28) / 2,
+            y: bounds.height - hintSize.height - 40,
+            width: hintSize.width + 28,
+            height: hintSize.height + 14
+        )
+        let topBarPath = NSBezierPath(roundedRect: topBarRect, xRadius: 8, yRadius: 8)
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        topBarPath.fill()
+        hintText.draw(at: CGPoint(x: topBarRect.minX + 14, y: topBarRect.minY + 7), withAttributes: hintAttrs)
+
         guard controller.isDragging else { return }
 
         let rect = controller.calculateNormalizedRect(p1: controller.startPoint, p2: controller.currentPoint)
@@ -150,8 +180,8 @@ private final class AreaSelectionCanvasView: NSView {
         NSColor(MaczyDesignTokens.brandPurple).setStroke()
         borderPath.stroke()
 
-        // Dimension indicator tag (e.g. "1280 × 720")
-        let dimensionText = "\(Int(rect.width)) × \(Int(rect.height))"
+        // Dimension indicator tag (e.g. "1280 × 720 • Scrolling Area")
+        let dimensionText = "\(Int(rect.width)) × \(Int(rect.height))" + (isScrolling ? " • Scrolling Area" : "")
         let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,

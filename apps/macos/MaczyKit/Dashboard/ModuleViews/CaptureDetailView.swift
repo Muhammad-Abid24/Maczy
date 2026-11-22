@@ -148,7 +148,7 @@ public struct CaptureDetailView: View {
 
                     ModeSelectButton(
                         title: "Scrolling",
-                        subtitle: "Vertical stitch",
+                        subtitle: "Area + Auto/Manual",
                         icon: "arrow.up.and.down.text.horizontal",
                         isSelected: selectedCaptureMode == "scrolling"
                     ) {

@@ -9,6 +9,7 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
 
     private var activeOverlay: AreaSelectionOverlayWindowController?
     private var completionHandler: ((Result<CapturedImageItem, CaptureError>) -> Void)?
+    private var activeSelectionPurpose: AreaSelectionPurpose = .captureArea
 
     private override init() {
         super.init()
@@ -28,7 +29,12 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
 
         switch mode.lowercased() {
         case "area":
-            presentAreaSelectionOverlay()
+            activeSelectionPurpose = .captureArea
+            presentAreaSelectionOverlay(purpose: .captureArea)
+
+        case "scrolling":
+            activeSelectionPurpose = .scrollingCapture
+            presentAreaSelectionOverlay(purpose: .scrollingCapture)
 
         case "window":
             Task {
@@ -55,21 +61,6 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
                 }
             }
 
-        case "scrolling":
-            Task {
-                do {
-                    ScrollingCaptureCoordinator.shared.startSession()
-                    let firstSlice = try await ScreenCaptureEngine.shared.capture(target: .window(windowID: 0))
-                    ScrollingCaptureCoordinator.shared.appendSlice(firstSlice.image)
-                    let stitched = try ScrollingCaptureCoordinator.shared.finishSession()
-                    self.handleCaptureSuccess(stitched)
-                } catch let error as CaptureError {
-                    self.handleCaptureFailure(error)
-                } catch {
-                    self.handleCaptureFailure(.captureFailed(error.localizedDescription))
-                }
-            }
-
         default:
             Task {
                 do {
@@ -84,8 +75,11 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
         }
     }
 
-    private func presentAreaSelectionOverlay() {
-        let overlay = AreaSelectionOverlayWindowController(screen: NSScreen.main ?? NSScreen.screens[0])
+    private func presentAreaSelectionOverlay(purpose: AreaSelectionPurpose) {
+        let overlay = AreaSelectionOverlayWindowController(
+            screen: NSScreen.main ?? NSScreen.screens[0],
+            purpose: purpose
+        )
         overlay.delegate = self
         self.activeOverlay = overlay
         overlay.present()
@@ -95,14 +89,32 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
 
     public func areaSelectionDidSelectRect(_ rect: CGRect, on displayID: CGDirectDisplayID) {
         activeOverlay = nil
-        Task {
-            do {
-                let item = try await ScreenCaptureEngine.shared.capture(target: .area(rect: rect, displayID: displayID))
-                self.handleCaptureSuccess(item)
-            } catch let error as CaptureError {
-                self.handleCaptureFailure(error)
-            } catch {
-                self.handleCaptureFailure(.captureFailed(error.localizedDescription))
+
+        if activeSelectionPurpose == .scrollingCapture {
+            Task {
+                await ScrollingCaptureCoordinator.shared.startInteractiveSession(
+                    rect: rect,
+                    displayID: displayID,
+                    completion: { [weak self] result in
+                        switch result {
+                        case .success(let item):
+                            self?.handleCaptureSuccess(item)
+                        case .failure(let error):
+                            self?.handleCaptureFailure(error)
+                        }
+                    }
+                )
+            }
+        } else {
+            Task {
+                do {
+                    let item = try await ScreenCaptureEngine.shared.capture(target: .area(rect: rect, displayID: displayID))
+                    self.handleCaptureSuccess(item)
+                } catch let error as CaptureError {
+                    self.handleCaptureFailure(error)
+                } catch {
+                    self.handleCaptureFailure(.captureFailed(error.localizedDescription))
+                }
             }
         }
     }

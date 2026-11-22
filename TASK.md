@@ -1,31 +1,30 @@
 # TASK.md — Current Antigravity Task
 
-## Active selection: FIX-TRUTHFUL-TCC-PERMISSION-CAPTURE (DONE) — Enforce Truthful System TCC Authorization & Preflight Capture Guarding
-**Objective:** Resolve discrepancy where the dashboard reported "Permission Granted" while macOS still required Screen Recording authorization, guard against capture attempts when unauthorized, and clearly guide the user through the macOS TCC relaunch requirement.
+## Active selection: FEAT-SCROLLING-CAPTURE-AREA-AUTO-SCROLL (DONE) — Area Selection, Auto-Scrolling, and Manual Scroll Controls for Scrolling Capture
+**Objective:** Enhance Scrolling Capture so the user selects a target scrolling region first (interactive area selection overlay), then controls the capture session via a floating HUD supporting both automated scrolling and manual scroll with step capture.
 
 ### Completed this task
-- [x] **Switched to Main & Pulled**: Base commit `6c00198` on `main`.
-- [x] **Created New Feature/Fix Branch**: Created branch `fix/truthful-tcc-permission-capture` directly off updated `main`.
-- [x] **Truthful Live TCC Permission Synchronization (`AppState.swift`)**:
-  - Removed stale `UserDefaults` caching in `AppState.init` that persisted false-positive `.granted` badges across app launches.
-  - Ensured `refreshPermissions()` strictly reflects `PermissionManager.shared.checkStatus(for:)` without falling back to stale in-memory granted flags.
-  - Live TCC gate in `dispatch(.captureScreenshot)` queries actual system status while respecting test mock overrides.
-- [x] **Pre-flight Authorization Guard (`CaptureCoordinator.swift`)**:
-  - Added pre-flight check at the beginning of `triggerCapture(mode:)`:
-    ```swift
-    guard ScreenCaptureEngine.shared.isAuthorized() else {
-        _ = CGRequestScreenCaptureAccess()
-        PermissionManager.shared.openSettings(for: .screenRecording)
-        self.handleCaptureFailure(.permissionDenied)
-        return
-    }
-    ```
-    Prevents area selection overlays from activating when Screen Recording is not permitted, triggering the system prompt and deep-linking directly to System Settings.
-- [x] **Clear Guidance & UI Actions (`CaptureDetailView.swift`, `PermissionCenterView.swift`)**:
-  - Removed misleading manual "Confirm Allowed" override buttons.
-  - Banner clearly explains that after toggling Maczy ON in System Settings, a relaunch is required so macOS injects the Mach authorization token into the process.
-  - Added direct "Relaunch App" button calling `PermissionManager.shared.relaunchApp()`.
-- [x] **Validation**:
-  - Ran `./scripts/ci.sh`: all 20 Rust unit + perf tests and 211 Swift unit tests passed with 0 errors and 0 warnings, followed by successful Xcode arm64 build and ad-hoc code sign verification.
+- [x] **Switched to Main & Pulled**: Checked out `main` and pulled latest (`3b9e433`).
+- [x] **Created New Feature Branch**: Created branch `feat/scrolling-capture-area-auto-scroll` directly off updated `main`.
+- [x] **Interactive Area Selection for Scrolling Capture**:
+  - Added `AreaSelectionPurpose` (`.captureArea`, `.scrollingCapture`) to `AreaSelectionOverlay.swift`.
+  - Added purpose-specific top instructions: *"Drag to select scrolling capture region • Press ESC to cancel"* and dimension tags with `• Scrolling Area`.
+  - Updated `CaptureCoordinator.swift` to route `scrolling` capture through area selection first.
+- [x] **Floating Interactive Control HUD (`ScrollingControlHUD.swift`)**:
+  - Built a floating `NSPanel` containing `ScrollingControlHUDView` with blur background and modern styling.
+  - Displays live slice count, estimated composite height, and bottom-of-page indicators.
+  - Added **Auto Scroll** button (toggling automated mouse wheel events).
+  - Added **Add Slice** button (for manual scrolling mode).
+  - Added **Done (Finish & Stitch)** button (triggering seamless vertical stitching and export).
+  - Added **Cancel** button (aborting session without residue).
+- [x] **Scrolling Capture Coordinator Enhancement (`ScrollingCaptureCoordinator.swift`)**:
+  - Maintained complete backward compatibility with existing lifecycle methods.
+  - Added Quartz HID mouse scroll wheel event synthesis (`CGEvent(scrollWheelEvent2Source: ...)`).
+  - Added interactive session management (`startInteractiveSession`, `captureCurrentSlice`, `startAutoScroll`, `stopAutoScroll`, `finishInteractiveSession`, `cancelInteractiveSession`).
+- [x] **Dashboard UI Enhancement (`CaptureDetailView.swift`)**:
+  - Updated Scrolling mode subtitle to `"Area + Auto/Manual"`.
+- [x] **Validation & CI**:
+  - Added unit tests in `CaptureTests.swift`.
+  - Ran `./scripts/ci.sh`: all 20 Rust unit + perf tests and 214 Swift unit tests passed with 0 errors and 0 warnings, followed by successful Xcode arm64 build and ad-hoc code sign verification.
 - [x] **Branch & Push**:
-  - Committed and pushed strictly to `fix/truthful-tcc-permission-capture`.
+  - Committed and pushed strictly to `feat/scrolling-capture-area-auto-scroll`.

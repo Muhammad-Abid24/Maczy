@@ -85,11 +85,11 @@ public struct BattDaemonClient: Sendable {
         }
 
         let body = "\(percentage)"
-        guard let response = sendHttpRequest(method: "POST", endpoint: "/limit", body: body, path: path) else {
+        guard let response = sendHttpRequest(method: "PUT", endpoint: "/limit", body: body, path: path) else {
             return .failure(.writeFailed("No response from batt daemon"))
         }
 
-        if response.contains("200 OK") || response.contains("204 No Content") {
+        if response.contains("200 OK") || response.contains("201 Created") || response.contains("204 No Content") {
             return .success(percentage)
         } else {
             return .failure(.writeFailed("Daemon returned non-success response"))
@@ -124,7 +124,7 @@ public struct BattDaemonClient: Sendable {
 
         var req = "\(method) \(endpoint) HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
         if let body = body {
-            req += "Content-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
+            req += "Content-Type: text/plain\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
         } else {
             req += "\r\n"
         }

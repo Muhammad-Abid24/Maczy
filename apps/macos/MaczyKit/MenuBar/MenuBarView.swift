@@ -141,9 +141,17 @@ public struct MenuBarView: View {
                         accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarSection(.batteryGuardian)
                     ) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Charge Ceiling (80 - 100%):")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                            HStack {
+                                Text("Charge Ceiling (80 - 100%):")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                if let eff = appState.chargeLimitManager.effectiveLimit {
+                                    Text("\(eff)% Active")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundColor(MaczyDesignTokens.brandPurple)
+                                }
+                            }
                             HStack(spacing: 4) {
                                 ForEach([80, 85, 90, 95, 100], id: \.self) { pct in
                                     MenuBarButton(

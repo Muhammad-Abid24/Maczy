@@ -10,7 +10,7 @@ public enum PowerSourceType: String, Sendable, Codable {
 /// Dynamic charging and discharging state of the battery.
 public enum ChargingState: String, Sendable, Codable {
     case discharging = "Discharging"
-    case charging = "Charging"
+    case charging = "AC Connected (Charging)"
     case charged = "Fully Charged"
     case notCharging = "AC Connected (Not Charging)"
 }

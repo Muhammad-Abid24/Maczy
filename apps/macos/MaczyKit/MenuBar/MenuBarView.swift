@@ -146,8 +146,8 @@ public struct MenuBarView: View {
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                if let active = appState.chargeLimitManager.activeLimit {
-                                    Text("\(active)% Active")
+                                if let eff = appState.chargeLimitManager.effectiveLimit {
+                                    Text("\(eff)% Active")
                                         .font(.system(size: 9, weight: .semibold))
                                         .foregroundColor(MaczyDesignTokens.brandPurple)
                                 }

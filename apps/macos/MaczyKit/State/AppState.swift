@@ -289,6 +289,7 @@ public final class AppState: ObservableObject {
                 case .invalidPercentage: errorCode = "INVALID_PERCENTAGE"
                 case .unsupportedHardware: errorCode = "UNSUPPORTED_HARDWARE"
                 case .authorizationRequired: errorCode = "GATE_MZ_014"
+                case .daemonUnavailable: errorCode = "DAEMON_UNAVAILABLE"
                 case .writeFailed: errorCode = "WRITE_FAILED"
                 }
                 transitionRuntime(moduleId: moduleId, to: .idle, message: error.localizedDescription)

@@ -139,39 +139,92 @@ public struct BatteryDetailView: View {
                 )
             }
 
-            // Charge Limit Selector (MZ-014)
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
+            // Charge Limit Selector & Backend Status (MZ-014)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Charge Limit Ceilings")
                             .font(.system(size: 13, weight: .semibold))
-                        Text("Selectable thresholds: 80%, 85%, 90%, 95%, 100%. Hardware write controls & readback.")
+                        Text("Selectable thresholds: 80%, 85%, 90%, 95%, 100%. Hardware write controls & verified readback.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    if let active = chargeLimitManager.activeLimit {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(MaczyDesignTokens.statusGreen)
-                                .frame(width: 7, height: 7)
-                            Text("Active Ceiling: \(active)% (Readback Verified)")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(MaczyDesignTokens.brandPurple)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(MaczyDesignTokens.brandPurple.opacity(0.1))
-                        .cornerRadius(6)
-                    } else if !chargeLimitManager.isSupported {
-                        Text("Safe Unsupported State")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if let eff = chargeLimitManager.effectiveLimit {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(MaczyDesignTokens.statusGreen)
+                                    .frame(width: 7, height: 7)
+                                Text("Effective: \(eff)% (Verified Readback)")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(MaczyDesignTokens.brandPurple)
+                            }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.05))
+                            .background(MaczyDesignTokens.brandPurple.opacity(0.1))
                             .cornerRadius(6)
+                        } else if !chargeLimitManager.isSupported {
+                            Text("Safe Unsupported State")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.05))
+                                .cornerRadius(6)
+                        }
+
+                        if let req = chargeLimitManager.requestedLimit, req != chargeLimitManager.effectiveLimit {
+                            Text("Requested: \(req)%")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
                     }
+                }
+
+                // Safety Gate Authorization (Requirement 9)
+                if !chargeLimitManager.isHardwareWriteApproved && chargeLimitManager.isSupported {
+                    HStack {
+                        Image(systemName: "lock.shield.fill")
+                            .foregroundColor(MaczyDesignTokens.statusOrange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Hardware Write Test Safety Gate")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Modifying physical SMC charging registers requires explicit user confirmation.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button("Authorize Hardware Write Test") {
+                            chargeLimitManager.setHardwareWriteApproved(true)
+                            gateNotice = "Hardware write tests authorized. Select a ceiling to apply to the batt daemon."
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(MaczyDesignTokens.brandPurple)
+                        .font(.system(size: 11))
+                    }
+                    .padding(10)
+                    .background(MaczyDesignTokens.statusOrange.opacity(0.1))
+                    .cornerRadius(8)
+                } else if chargeLimitManager.isHardwareWriteApproved {
+                    HStack {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundColor(MaczyDesignTokens.statusGreen)
+                        Text("Hardware Write Test Authorized (batt daemon connected)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(MaczyDesignTokens.statusGreen)
+                        Spacer()
+                        Button("Revoke Authorization") {
+                            chargeLimitManager.setHardwareWriteApproved(false)
+                            gateNotice = "Hardware write tests revoked. Fail-closed write gate active."
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                    .background(MaczyDesignTokens.statusGreen.opacity(0.1))
+                    .cornerRadius(8)
                 }
 
                 HStack(spacing: 8) {
@@ -186,7 +239,7 @@ public struct BatteryDetailView: View {
                             }
                         }
                         .buttonStyle(.bordered)
-                        .tint(chargeLimitManager.activeLimit == pct || (chargeLimitManager.activeLimit == nil && selectedLimit == pct) ? MaczyDesignTokens.brandPurple : nil)
+                        .tint(chargeLimitManager.effectiveLimit == pct || (chargeLimitManager.effectiveLimit == nil && selectedLimit == pct) ? MaczyDesignTokens.brandPurple : nil)
                         .disabled(!chargeLimitManager.isSupported)
                     }
                 }
@@ -194,7 +247,7 @@ public struct BatteryDetailView: View {
                 if let notice = gateNotice {
                     Text(notice)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(chargeLimitManager.activeLimit == selectedLimit ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
+                        .foregroundColor(chargeLimitManager.effectiveLimit == selectedLimit ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
                         .padding(.top, 2)
                 } else if !chargeLimitManager.isSupported {
                     Text("Hardware charge limit writes are unsupported on this device (desktop or no battery). Safe unsupported state active — telemetry monitoring remains operational.")
@@ -204,14 +257,20 @@ public struct BatteryDetailView: View {
                 }
             }
 
-            // Power Bypass Notice
+            // Power Bypass Notice & Telemetry Differentiation (Requirement 6)
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(MaczyDesignTokens.statusOrange)
+                Image(systemName: chargeLimitManager.isPowerBypassActive(snapshot: battery) ? "bolt.shield.fill" : "exclamationmark.triangle.fill")
+                    .foregroundColor(chargeLimitManager.isPowerBypassActive(snapshot: battery) ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Charge Limit ≠ Power Bypass")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Setting a charge ceiling is distinct from true hardware power bypass. Maczy only reports power-path bypass when verified by the supported backend.")
+                    HStack {
+                        Text("Charge Limit ≠ Power Bypass")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        Text(chargeLimitManager.isPowerBypassActive(snapshot: battery) ? "Power Bypass: Engaged (0 mA draw)" : "Power Bypass: Standby")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(chargeLimitManager.isPowerBypassActive(snapshot: battery) ? MaczyDesignTokens.statusGreen : .secondary)
+                    }
+                    Text("Setting a charge ceiling is distinct from true hardware power bypass. Maczy only reports power-path bypass when verified by the supported backend and battery current is quiescent (0 mA).")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

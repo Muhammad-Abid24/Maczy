@@ -24,6 +24,7 @@ public final class AppState: ObservableObject {
     public let optimizerManager: OptimizerManager
 
     @Published public var permissions: [MaczyPermission: PermissionState] = [:]
+    @Published public var lastCapturedImage: CGImage?
     private var explicitlySetPermissions: Set<MaczyPermission> = []
     private var lastDispatchedActions: [String: Date] = [:]
     public var debounceInterval: TimeInterval
@@ -244,6 +245,7 @@ public final class AppState: ObservableObject {
                 Task { @MainActor in
                     switch captureResult {
                     case .success(let item):
+                        self?.lastCapturedImage = item.image
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: "Captured \(Int(item.size.width))×\(Int(item.size.height))")
                     case .failure(let error):
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: error.localizedDescription)

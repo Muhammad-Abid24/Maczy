@@ -198,6 +198,63 @@ public struct CaptureDetailView: View {
                 }
             }
 
+            // Recent Capture Preview Card
+            if let lastImage = appState.lastCapturedImage {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "photo.fill")
+                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                        Text("Recent Capture Preview")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        Text("\(lastImage.width) × \(lastImage.height) px (Retina)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(alignment: .center, spacing: 14) {
+                        Image(decorative: lastImage, scale: 2.0, orientation: .up)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: 160, maxHeight: 100)
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                            )
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Latest screenshot captured successfully with pixel-perfect Retina clarity.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+
+                            HStack(spacing: 8) {
+                                Button("Copy to Clipboard") {
+                                    CaptureExportManager.shared.copyToPasteboard(lastImage)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                Button("Reveal in Finder") {
+                                    let dir = CaptureExportManager.shared.defaultScreenshotsDirectory
+                                    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dir.path)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.7))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MaczyDesignTokens.brandPurple.opacity(0.3), lineWidth: 1)
+                )
+            }
+
             Divider()
 
             // Info note

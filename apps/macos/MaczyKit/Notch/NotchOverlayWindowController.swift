@@ -1,10 +1,27 @@
 import AppKit
 import SwiftUI
 
+/// Specialized NSPanel subclass for the Dynamic Notch overlay.
+/// Prevents AppKit's default constrainFrameRect from pushing the notch panel down below the menu bar.
+final class NotchPanel: NSPanel {
+    override var canBecomeKey: Bool {
+        return false
+    }
+
+    override var canBecomeMain: Bool {
+        return false
+    }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        // Return unconstrained frame so the overlay sits flush at the physical screen top / notch cutout
+        return frameRect
+    }
+}
+
 /// Window controller hosting the Dynamic Notch overlay panel at the top of the display.
 @MainActor
 public final class NotchOverlayWindowController {
-    private var panel: NSPanel?
+    private var panel: NotchPanel?
     private var hostingView: NSHostingView<NotchContainerView>?
 
     public init() {}
@@ -58,7 +75,7 @@ public final class NotchOverlayWindowController {
         let initialProfile = NotchCoordinator.shared.activeProfile
         let frame = initialProfile.notchRect
 
-        let newPanel = NSPanel(
+        let newPanel = NotchPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -68,7 +85,7 @@ public final class NotchOverlayWindowController {
         newPanel.isOpaque = false
         newPanel.backgroundColor = .clear
         newPanel.hasShadow = false
-        newPanel.level = .floating
+        newPanel.level = .statusBar
         newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         newPanel.ignoresMouseEvents = false
 

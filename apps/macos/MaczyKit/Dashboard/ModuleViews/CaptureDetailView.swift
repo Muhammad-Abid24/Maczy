@@ -441,28 +441,11 @@ public struct CaptureDetailView: View {
 
                 Spacer()
 
-                Button("Confirm Allowed") {
-                    appState.markPermissionGranted(.screenRecording)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(MaczyDesignTokens.statusGreen)
-                .controlSize(.small)
-
-                Button("Request Access") {
-                    Task {
-                        _ = await PermissionManager.shared.requestAuthorization(for: .screenRecording)
-                        await MainActor.run {
-                            appState.refreshPermissions()
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button("Open Settings") {
+                Button("Open System Settings") {
                     PermissionManager.shared.openSettings(for: .screenRecording)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(MaczyDesignTokens.brandPurple)
                 .controlSize(.small)
 
                 Button("Refresh") {
@@ -478,16 +461,15 @@ public struct CaptureDetailView: View {
                 Image(systemName: "info.circle")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                Text("Not in System Settings list? Click '+' below the list in System Settings and select Maczy from Applications. If toggled ON, restart Maczy to apply.")
-                    .font(.system(size: 10))
+                Text("After toggling Maczy ON in System Settings, click 'Relaunch App' (or 'Quit & Reopen') so macOS applies permissions.")
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
                 Spacer()
                 Button("Relaunch App") {
                     PermissionManager.shared.relaunchApp()
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(MaczyDesignTokens.brandPurple)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding(12)

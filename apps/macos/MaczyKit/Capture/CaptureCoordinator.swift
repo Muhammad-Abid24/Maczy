@@ -18,6 +18,14 @@ public final class CaptureCoordinator: NSObject, AreaSelectionOverlayDelegate {
     public func triggerCapture(mode: String, completion: ((Result<CapturedImageItem, CaptureError>) -> Void)? = nil) {
         self.completionHandler = completion
 
+        // Ensure macOS Screen Recording permission is active before presenting capture UI
+        guard ScreenCaptureEngine.shared.isAuthorized() else {
+            _ = CGRequestScreenCaptureAccess()
+            PermissionManager.shared.openSettings(for: .screenRecording)
+            self.handleCaptureFailure(.permissionDenied)
+            return
+        }
+
         switch mode.lowercased() {
         case "area":
             presentAreaSelectionOverlay()

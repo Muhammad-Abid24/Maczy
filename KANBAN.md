@@ -7,7 +7,6 @@
 - [ ] MZ-032 Release readiness
 
 ## BLOCKED — RELEASE/SECURITY GATE
-- [ ] **MZ-014** Charge limit/write controls (requires backend, license, hardware tests + owner authorization)
 - [ ] **MZ-024** actual macOS locked-session Face Unlock (requires proven OS pathway, anti-spoof audit and Product Owner authorization; NOT Maczy-only auth)
 - [ ] **MZ-029** Cleanup deletion execution (explicit approval and disposable fixture tests)
 
@@ -18,6 +17,7 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-014** Limit selection 80/85/90/95/100, verified backend & readback, and safe unsupported state (owner authorized) (`feat/mz-014-charge-limit-controls`)
 - [x] **FIX-ALWAYS-ON-SYSTEM-ONLY-MODE** Fix Always On System Only mode observation, add direct activation, and persist mode preference (`fix/always-on-system-only-mode`)
 - [x] **FEAT-RECORDING-PREVIEW-AND-MIC-LEVEL** Floating recording preview HUD, in-dashboard recent video card, and real-time live microphone voice level preview (`feat/recording-preview-and-mic-level`)
 - [x] **FEAT-SCROLLING-CAPTURE-AREA-AUTO-SCROLL** Interactive area selection, floating control HUD, auto scrolling, and manual capture for scrolling screenshots (`feat/scrolling-capture-area-auto-scroll`)
@@ -87,6 +87,7 @@
 
 2026-11-22 | MZ-013 | REVIEW -> DONE | feat/mz-013-battery-monitoring | Merged PR #12 (865f103): BatteryMonitor, IOKitBatteryTelemetryReader, AppleSmartBattery & IOPS telemetry, BatteryDetailView, MenuBarView, 15 Rust + 80 Swift tests pass, CI in 14s | Product Owner
 2026-11-22 | MZ-015 | REVIEW -> DONE | feat/mz-015-dynamic-notch | Merged PR #13 (b5b81de): NotchGeometry, NotchCoordinator, NotchOverlayWindowController, NotchContainerView, 15 Rust + 90 Swift tests pass, zero warnings | Product Owner
+2026-11-23 | MZ-014 | BLOCKED -> DONE | feat/mz-014-charge-limit-controls | ChargeLimitBackendProtocol, NativeSMCChargeLimitBackend, MockChargeLimitBackend, ChargeLimitManager, readback verification, safe unsupported states, limit selection 80/85/90/95/100, verified backend unit tests | Product Owner
 2026-11-22 | MZ-016 | REVIEW -> DONE | feat/mz-016-media-hud | Merged PR #14 (785294d): MediaHUDCoordinator, SystemHUDCoordinator, Now Playing player card, volume/brightness HUD toast, 15 Rust + 97 Swift tests pass, zero warnings | Product Owner
 2026-11-22 | MZ-017 | REVIEW -> DONE | feat/mz-017-live-activities | Fast-forward merged into main (ef71e37): LiveActivityCoordinator, LiveActivityItem, timer countdowns, notifications, Notch HUD card stack, 15 Rust + 102 Swift tests pass, zero warnings | Product Owner
 2026-11-22 | MZ-020 | IN PROGRESS -> DONE | feat/mz-020-lock-screen | Merged into main (1b0cd5a): SystemLockController, SACLockScreenImmediate + CGSession fallback, SystemLockManager, Notch HUD Lock action, 15 Rust + 128 Swift tests pass, zero warnings | Product Owner

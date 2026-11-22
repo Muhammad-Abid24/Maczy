@@ -52,6 +52,8 @@ pub struct AppState {
     event_bus: EventBus,
     last_action_dispatched: HashMap<ModuleId, Instant>,
     debounce_duration: Duration,
+    charge_limit_backend_verified: bool,
+    current_charge_limit: Option<u8>,
 }
 
 impl Default for AppState {
@@ -135,6 +137,8 @@ impl Default for AppState {
             event_bus: EventBus::new(),
             last_action_dispatched: HashMap::new(),
             debounce_duration: Duration::from_millis(200),
+            charge_limit_backend_verified: false,
+            current_charge_limit: None,
         }
     }
 }
@@ -142,6 +146,14 @@ impl Default for AppState {
 impl AppState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn enable_charge_limit_backend(&mut self, verified: bool) {
+        self.charge_limit_backend_verified = verified;
+    }
+
+    pub fn get_charge_limit(&self) -> Option<u8> {
+        self.current_charge_limit
     }
 
     pub fn all_statuses(&self) -> &[ModuleStatus; MODULE_COUNT] {
@@ -277,11 +289,23 @@ impl AppState {
                     || *percentage == 95
                     || *percentage == 100
                 {
-                    // Charge writes require MZ-014 backend verification
-                    CommandResult::failure(
-                        "GATE_MZ_014",
-                        "Setting charge threshold requires MZ-014 backend verification. Write controls gated.",
-                    )
+                    if self.charge_limit_backend_verified {
+                        self.current_charge_limit = Some(*percentage);
+                        let msg =
+                            format!("Charge limit set to {}% (readback verified)", percentage);
+                        self.transition_runtime(
+                            module_id,
+                            ModuleRuntimeState::Running,
+                            msg.clone(),
+                        );
+                        CommandResult::success(msg)
+                    } else {
+                        // Charge writes require MZ-014 backend verification
+                        CommandResult::failure(
+                            "GATE_MZ_014",
+                            "Setting charge threshold requires MZ-014 backend verification. Write controls gated.",
+                        )
+                    }
                 } else {
                     CommandResult::failure(
                         "INVALID_PERCENTAGE",

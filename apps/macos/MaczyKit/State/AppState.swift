@@ -22,6 +22,7 @@ public final class AppState: ObservableObject {
     public let cleanerManager: CleanerManager
     public let uninstallManager: UninstallManager
     public let optimizerManager: OptimizerManager
+    public let chargeLimitManager: ChargeLimitManager
 
     @Published public var permissions: [MaczyPermission: PermissionState] = [:]
     @Published public var lastCapturedImage: CGImage?
@@ -48,6 +49,7 @@ public final class AppState: ObservableObject {
         cleanerManager: CleanerManager? = nil,
         uninstallManager: UninstallManager? = nil,
         optimizerManager: OptimizerManager? = nil,
+        chargeLimitManager: ChargeLimitManager? = nil,
         autoRefreshPermissions: Bool = false
     ) {
         self.capabilityRegistry = capabilityRegistry
@@ -58,6 +60,7 @@ public final class AppState: ObservableObject {
         self.cleanerManager = cleanerManager ?? CleanerManager()
         self.uninstallManager = uninstallManager ?? UninstallManager()
         self.optimizerManager = optimizerManager ?? OptimizerManager()
+        self.chargeLimitManager = chargeLimitManager ?? ChargeLimitManager()
 
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
@@ -267,17 +270,29 @@ public final class AppState: ObservableObject {
             result = CommandResult.success(message: "Recording stopped and saved")
 
         case .selectChargeLimit(let percentage):
-            if [80, 85, 90, 95, 100].contains(percentage) {
-                // Charge write controls are strictly gated by MZ-014 backend verification
-                result = CommandResult.failure(
-                    errorCode: "GATE_MZ_014",
-                    message: "Setting charge limit requires MZ-014 backend verification. Write controls gated."
-                )
-            } else {
+            guard [80, 85, 90, 95, 100].contains(percentage) else {
                 result = CommandResult.failure(
                     errorCode: "INVALID_PERCENTAGE",
                     message: "Charge limit must be 80, 85, 90, 95, or 100%"
                 )
+                break
+            }
+
+            let writeResult = chargeLimitManager.setChargeLimit(percentage)
+            switch writeResult {
+            case .success(let confirmedLimit):
+                transitionRuntime(moduleId: moduleId, to: .running, message: "Charge ceiling set to \(confirmedLimit)% (readback verified)")
+                result = CommandResult.success(message: "Charge ceiling set to \(confirmedLimit)%")
+            case .failure(let error):
+                let errorCode: String
+                switch error {
+                case .invalidPercentage: errorCode = "INVALID_PERCENTAGE"
+                case .unsupportedHardware: errorCode = "UNSUPPORTED_HARDWARE"
+                case .authorizationRequired: errorCode = "GATE_MZ_014"
+                case .writeFailed: errorCode = "WRITE_FAILED"
+                }
+                transitionRuntime(moduleId: moduleId, to: .idle, message: error.localizedDescription)
+                result = CommandResult.failure(errorCode: errorCode, message: error.localizedDescription)
             }
 
         case .refreshBatteryTelemetry:

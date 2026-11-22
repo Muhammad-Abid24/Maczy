@@ -141,6 +141,25 @@ mod tests {
     }
 
     #[test]
+    fn test_charge_limit_verified_backend_and_readback() {
+        let mut state = AppState::new();
+        state.set_debounce_duration(std::time::Duration::from_millis(0));
+        state.enable_charge_limit_backend(true);
+
+        for pct in [80, 85, 90, 95, 100] {
+            let res = state.dispatch(Action::SelectChargeLimit { percentage: pct });
+            assert!(res.ok, "Expected ok for {}%, got {:?}", pct, res);
+            assert_eq!(state.get_charge_limit(), Some(pct));
+        }
+
+        // Invalid percentage rejected
+        let invalid = state.dispatch(Action::SelectChargeLimit { percentage: 73 });
+        assert!(!invalid.ok);
+        assert_eq!(invalid.error_code.as_deref(), Some("INVALID_PERCENTAGE"));
+        assert_eq!(state.get_charge_limit(), Some(100)); // preserves last valid limit
+    }
+
+    #[test]
     fn test_debounce_ignores_duplicate_rapid_actions() {
         let mut state = AppState::new();
         state.set_permission_state(Permission::ScreenRecording, PermissionState::Granted);

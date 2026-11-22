@@ -206,6 +206,110 @@ final class BatteryMonitoringTests: XCTestCase {
         XCTAssertNotNil(result.message)
     }
 
+    @MainActor
+    func testChargeLimitSelection80To100WithVerifiedBackend() {
+        let mockBackend = MockChargeLimitBackend(isSupported: true, isAuthorized: true, initialLimit: nil)
+        let manager = ChargeLimitManager(backend: mockBackend)
+
+        XCTAssertTrue(manager.isSupported)
+        XCTAssertNil(manager.activeLimit)
+
+        // Test each supported limit: 80, 85, 90, 95, 100
+        for pct in ChargeLimitManager.allowedLimits {
+            let res = manager.setChargeLimit(pct)
+            guard case .success(let confirmed) = res else {
+                XCTFail("Expected success for \(pct)%, got \(res)")
+                return
+            }
+            XCTAssertEqual(confirmed, pct)
+            XCTAssertEqual(manager.activeLimit, pct)
+            XCTAssertEqual(mockBackend.lastWrittenLimit, pct)
+            XCTAssertTrue(manager.statusMessage.contains("readback verified"))
+        }
+
+        XCTAssertEqual(mockBackend.writeCount, 5)
+    }
+
+    @MainActor
+    func testChargeLimitRejectsInvalidPercentages() {
+        let mockBackend = MockChargeLimitBackend(isSupported: true, isAuthorized: true, initialLimit: 80)
+        let manager = ChargeLimitManager(backend: mockBackend)
+
+        let invalidList = [0, 50, 73, 99, 105, -10]
+        for invalid in invalidList {
+            let res = manager.setChargeLimit(invalid)
+            guard case .failure(let error) = res else {
+                XCTFail("Expected failure for invalid percentage \(invalid)")
+                continue
+            }
+            XCTAssertEqual(error, .invalidPercentage(invalid))
+            // Active limit must remain unchanged
+            XCTAssertEqual(manager.activeLimit, 80)
+        }
+        XCTAssertEqual(mockBackend.writeCount, 0)
+    }
+
+    @MainActor
+    func testChargeLimitSafeUnsupportedState() {
+        let mockBackend = MockChargeLimitBackend(isSupported: false, hardwareModel: "Macmini9,1", isAuthorized: false)
+        let manager = ChargeLimitManager(backend: mockBackend)
+
+        XCTAssertFalse(manager.isSupported)
+        XCTAssertNil(manager.activeLimit)
+        XCTAssertTrue(manager.statusMessage.contains("Safe unsupported state"))
+
+        let res = manager.setChargeLimit(80)
+        guard case .failure(let error) = res else {
+            XCTFail("Expected failure on unsupported hardware")
+            return
+        }
+        XCTAssertEqual(error, .unsupportedHardware("Macmini9,1"))
+        XCTAssertNil(manager.activeLimit)
+    }
+
+    @MainActor
+    func testChargeLimitAppStateIntegrationWithVerifiedBackend() {
+        let mockBackend = MockChargeLimitBackend(isSupported: true, isAuthorized: true, initialLimit: nil)
+        let manager = ChargeLimitManager(backend: mockBackend)
+        let appState = AppState(chargeLimitManager: manager)
+
+        let res = appState.dispatch(.selectChargeLimit(percentage: 85))
+        XCTAssertTrue(res.ok)
+        XCTAssertEqual(manager.activeLimit, 85)
+        XCTAssertEqual(appState.status(for: .batteryGuardian)?.runtimeState, .running)
+
+        // Invalid percentage rejected
+        let resInvalid = appState.dispatch(.selectChargeLimit(percentage: 75))
+        XCTAssertFalse(resInvalid.ok)
+        XCTAssertEqual(resInvalid.errorCode, "INVALID_PERCENTAGE")
+        XCTAssertEqual(manager.activeLimit, 85)
+    }
+
+    @MainActor
+    func testNativeSMCBackendSafetyChecks() {
+        // Desktop Mac simulation: no battery present
+        let desktopBackend = NativeSMCChargeLimitBackend(isBatteryPresent: false)
+        XCTAssertFalse(desktopBackend.isSupported)
+        let resDesktop = desktopBackend.writeLimit(80)
+        guard case .failure(let err) = resDesktop else {
+            XCTFail("Expected failure for desktop Mac")
+            return
+        }
+        if case .unsupportedHardware = err {
+            // Success
+        } else {
+            XCTFail("Expected .unsupportedHardware error, got \(err)")
+        }
+
+        // Portable Mac simulation: battery present but unprivileged process
+        let laptopBackend = NativeSMCChargeLimitBackend(isBatteryPresent: true)
+        XCTAssertTrue(laptopBackend.isSupported)
+        if geteuid() != 0 {
+            let resWrite = laptopBackend.writeLimit(80)
+            XCTAssertEqual(resWrite, .failure(.authorizationRequired))
+        }
+    }
+
     func testNativeIOKitReaderSafePreflight() {
         let reader = IOKitBatteryTelemetryReader()
         let snapshot = reader.readTelemetry()

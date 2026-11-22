@@ -2,11 +2,13 @@ import SwiftUI
 
 public struct BatteryDetailView: View {
     @ObservedObject var appState: AppState
+    @ObservedObject private var chargeLimitManager: ChargeLimitManager
     @State private var selectedLimit: Int = 80
     @State private var gateNotice: String?
 
     public init(appState: AppState) {
         self.appState = appState
+        self._chargeLimitManager = ObservedObject(wrappedValue: appState.chargeLimitManager)
     }
 
     private var battery: BatterySnapshot {
@@ -137,13 +139,40 @@ public struct BatteryDetailView: View {
                 )
             }
 
-            // Charge Limit Selector (Gated by MZ-014)
+            // Charge Limit Selector (MZ-014)
             VStack(alignment: .leading, spacing: 10) {
-                Text("Charge Limit Ceilings")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Selectable thresholds: 80%, 85%, 90%, 95%, 100%. Write controls are verified via backend.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Charge Limit Ceilings")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Selectable thresholds: 80%, 85%, 90%, 95%, 100%. Hardware write controls & readback.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if let active = chargeLimitManager.activeLimit {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(MaczyDesignTokens.statusGreen)
+                                .frame(width: 7, height: 7)
+                            Text("Active Ceiling: \(active)% (Readback Verified)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(MaczyDesignTokens.brandPurple)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(MaczyDesignTokens.brandPurple.opacity(0.1))
+                        .cornerRadius(6)
+                    } else if !chargeLimitManager.isSupported {
+                        Text("Safe Unsupported State")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.05))
+                            .cornerRadius(6)
+                    }
+                }
 
                 HStack(spacing: 8) {
                     ForEach([80, 85, 90, 95, 100], id: \.self) { pct in
@@ -152,17 +181,25 @@ public struct BatteryDetailView: View {
                             let res = appState.dispatch(.selectChargeLimit(percentage: pct))
                             if !res.ok {
                                 gateNotice = res.message ?? "Charge write controls gated."
+                            } else {
+                                gateNotice = "Charge ceiling set to \(pct)% (readback verified)."
                             }
                         }
                         .buttonStyle(.bordered)
-                        .tint(selectedLimit == pct ? MaczyDesignTokens.brandPurple : nil)
+                        .tint(chargeLimitManager.activeLimit == pct || (chargeLimitManager.activeLimit == nil && selectedLimit == pct) ? MaczyDesignTokens.brandPurple : nil)
+                        .disabled(!chargeLimitManager.isSupported)
                     }
                 }
 
                 if let notice = gateNotice {
                     Text(notice)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(MaczyDesignTokens.statusOrange)
+                        .foregroundColor(chargeLimitManager.activeLimit == selectedLimit ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
+                        .padding(.top, 2)
+                } else if !chargeLimitManager.isSupported {
+                    Text("Hardware charge limit writes are unsupported on this device (desktop or no battery). Safe unsupported state active — telemetry monitoring remains operational.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
                         .padding(.top, 2)
                 }
             }

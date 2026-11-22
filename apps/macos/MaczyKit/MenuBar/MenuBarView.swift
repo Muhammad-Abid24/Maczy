@@ -237,49 +237,79 @@ public struct MenuBarView: View {
                     MenuBarModuleSection(
                         title: "Always On",
                         icon: "sun.max.fill",
-                        statusText: appState.alwaysOnManager.isActive ? appState.alwaysOnManager.formattedRemainingTime : "Idle",
+                        statusText: appState.alwaysOnManager.isActive ? "\(appState.alwaysOnManager.currentMode == .systemOnly ? "[Sys] " : "")\(appState.alwaysOnManager.formattedRemainingTime)" : (appState.alwaysOnManager.currentMode == .systemOnly ? "System Only" : "Idle"),
                         statusColor: appState.alwaysOnManager.isActive ? MaczyDesignTokens.statusOrange : .secondary,
                         accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarSection(.alwaysOn)
                     ) {
-                        HStack(spacing: 5) {
-                            MenuBarButton(
-                                title: "15m",
-                                accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(15),
-                                accessibilityHint: "Prevent sleep for 15 minutes"
-                            ) {
-                                _ = viewModel.executeAction(.startAwakeSession(durationMinutes: 15), on: appState)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Button(action: {
+                                    appState.alwaysOnManager.setMode(.systemAndDisplay)
+                                }) {
+                                    Text("Display & System")
+                                        .font(.system(size: 9, weight: appState.alwaysOnManager.currentMode == .systemAndDisplay ? .bold : .regular))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(appState.alwaysOnManager.currentMode == .systemAndDisplay ? MaczyDesignTokens.brandPurple.opacity(0.2) : Color.primary.opacity(0.05))
+                                        .foregroundColor(appState.alwaysOnManager.currentMode == .systemAndDisplay ? MaczyDesignTokens.brandPurple : .secondary)
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button(action: {
+                                    appState.alwaysOnManager.setMode(.systemOnly)
+                                }) {
+                                    Text("System Only")
+                                        .font(.system(size: 9, weight: appState.alwaysOnManager.currentMode == .systemOnly ? .bold : .regular))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(appState.alwaysOnManager.currentMode == .systemOnly ? MaczyDesignTokens.brandPurple.opacity(0.2) : Color.primary.opacity(0.05))
+                                        .foregroundColor(appState.alwaysOnManager.currentMode == .systemOnly ? MaczyDesignTokens.brandPurple : .secondary)
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            MenuBarButton(
-                                title: "30m",
-                                accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(30),
-                                accessibilityHint: "Prevent sleep for 30 minutes"
-                            ) {
-                                _ = viewModel.executeAction(
-                                    .startAwakeSession(durationMinutes: 30), on: appState)
-                            }
-                            MenuBarButton(
-                                title: "1h",
-                                accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(60),
-                                accessibilityHint: "Prevent sleep for 1 hour"
-                            ) {
-                                _ = viewModel.executeAction(
-                                    .startAwakeSession(durationMinutes: 60), on: appState)
-                            }
-                            MenuBarButton(
-                                title: "∞",
-                                accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(nil),
-                                accessibilityHint: "Prevent sleep indefinitely until stopped"
-                            ) {
-                                _ = viewModel.executeAction(
-                                    .startAwakeSession(durationMinutes: nil), on: appState)
-                            }
-                            if appState.alwaysOnManager.isActive {
+
+                            HStack(spacing: 5) {
                                 MenuBarButton(
-                                    title: "Stop",
-                                    accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnStop,
-                                    accessibilityHint: "Release power assertions and allow normal sleep"
+                                    title: "15m",
+                                    accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(15),
+                                    accessibilityHint: "Prevent sleep for 15 minutes"
                                 ) {
-                                    _ = viewModel.executeAction(.stopAwakeSession, on: appState)
+                                    _ = viewModel.executeAction(.startAwakeSession(durationMinutes: 15), on: appState)
+                                }
+                                MenuBarButton(
+                                    title: "30m",
+                                    accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(30),
+                                    accessibilityHint: "Prevent sleep for 30 minutes"
+                                ) {
+                                    _ = viewModel.executeAction(
+                                        .startAwakeSession(durationMinutes: 30), on: appState)
+                                }
+                                MenuBarButton(
+                                    title: "1h",
+                                    accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(60),
+                                    accessibilityHint: "Prevent sleep for 1 hour"
+                                ) {
+                                    _ = viewModel.executeAction(
+                                        .startAwakeSession(durationMinutes: 60), on: appState)
+                                }
+                                MenuBarButton(
+                                    title: "∞",
+                                    accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnDuration(nil),
+                                    accessibilityHint: "Prevent sleep indefinitely until stopped"
+                                ) {
+                                    _ = viewModel.executeAction(
+                                        .startAwakeSession(durationMinutes: nil), on: appState)
+                                }
+                                if appState.alwaysOnManager.isActive {
+                                    MenuBarButton(
+                                        title: "Stop",
+                                        accessibilityIdentifier: MaczyAccessibilityIdentifier.menuBarBtnAlwaysOnStop,
+                                        accessibilityHint: "Release power assertions and allow normal sleep"
+                                    ) {
+                                        _ = viewModel.executeAction(.stopAwakeSession, on: appState)
+                                    }
                                 }
                             }
                         }

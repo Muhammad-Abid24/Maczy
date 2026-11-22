@@ -18,6 +18,7 @@
 - [ ] None
 
 ## DONE
+- [x] **FIX-ALWAYS-ON-SYSTEM-ONLY-MODE** Fix Always On System Only mode observation, add direct activation, and persist mode preference (`fix/always-on-system-only-mode`)
 - [x] **FEAT-RECORDING-PREVIEW-AND-MIC-LEVEL** Floating recording preview HUD, in-dashboard recent video card, and real-time live microphone voice level preview (`feat/recording-preview-and-mic-level`)
 - [x] **FEAT-SCROLLING-CAPTURE-AREA-AUTO-SCROLL** Interactive area selection, floating control HUD, auto scrolling, and manual capture for scrolling screenshots (`feat/scrolling-capture-area-auto-scroll`)
 - [x] **FIX-TRUTHFUL-TCC-PERMISSION-CAPTURE** Enforce truthful system TCC authorization and preflight capture guarding (`fix/truthful-tcc-permission-capture`)

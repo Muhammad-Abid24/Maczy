@@ -11,15 +11,24 @@ public final class AlwaysOnManager: ObservableObject {
     @Published public var safetyConfig: AlwaysOnSafetyConfig
 
     private let powerProvider: PowerAssertionProvider
+    private let userDefaults: UserDefaults
     private var timer: Timer?
     private var thermalObserver: NSObjectProtocol?
 
     public init(
         powerProvider: PowerAssertionProvider = NativePowerAssertionProvider(),
-        safetyConfig: AlwaysOnSafetyConfig = AlwaysOnSafetyConfig()
+        safetyConfig: AlwaysOnSafetyConfig = AlwaysOnSafetyConfig(),
+        userDefaults: UserDefaults = .standard
     ) {
         self.powerProvider = powerProvider
         self.safetyConfig = safetyConfig
+        self.userDefaults = userDefaults
+
+        // Restore persisted mode preference
+        if let saved = userDefaults.string(forKey: "maczy_always_on_mode"),
+           let savedMode = AlwaysOnMode(rawValue: saved) {
+            self.currentMode = savedMode
+        }
 
         // Register thermal state change observer
         self.thermalObserver = NotificationCenter.default.addObserver(
@@ -104,6 +113,7 @@ public final class AlwaysOnManager: ObservableObject {
     }
 
     public func setMode(_ mode: AlwaysOnMode) {
+        userDefaults.set(mode.rawValue, forKey: "maczy_always_on_mode")
         guard mode != currentMode else { return }
         self.currentMode = mode
 

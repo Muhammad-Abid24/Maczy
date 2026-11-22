@@ -2,13 +2,11 @@ import SwiftUI
 
 public struct AlwaysOnDetailView: View {
     @ObservedObject var appState: AppState
+    @ObservedObject private var alwaysOnManager: AlwaysOnManager
 
     public init(appState: AppState) {
         self.appState = appState
-    }
-
-    private var alwaysOnManager: AlwaysOnManager {
-        appState.alwaysOnManager
+        self._alwaysOnManager = ObservedObject(wrappedValue: appState.alwaysOnManager)
     }
 
     public var body: some View {
@@ -98,24 +96,43 @@ public struct AlwaysOnDetailView: View {
                             }
                         }
                     } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("System Sleep Normal")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Your Mac will sleep automatically according to macOS Energy Saver settings.")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("System Sleep Normal")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Mode ready: \(alwaysOnManager.currentMode.displayName) — \(alwaysOnManager.currentMode.description)")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
 
-                            if let reason = alwaysOnManager.lastReleaseReason {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "info.circle.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(MaczyDesignTokens.brandPurple)
-                                    Text(reason.message)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(MaczyDesignTokens.brandPurple)
+                                if let reason = alwaysOnManager.lastReleaseReason {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "info.circle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                                        Text(reason.message)
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                                    }
+                                    .padding(.top, 2)
                                 }
-                                .padding(.top, 4)
                             }
+
+                            Spacer()
+
+                            Button(action: {
+                                _ = appState.dispatch(.startAwakeSession(durationMinutes: nil))
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 10))
+                                    Text("Start Always On")
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MaczyDesignTokens.statusOrange)
                         }
                     }
                 }

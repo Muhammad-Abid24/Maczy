@@ -24,9 +24,17 @@ public final class AppState: ObservableObject {
     public let optimizerManager: OptimizerManager
 
     @Published public var permissions: [MaczyPermission: PermissionState] = [:]
+    private var explicitlySetPermissions: Set<MaczyPermission> = []
     private var lastDispatchedActions: [String: Date] = [:]
     public var debounceInterval: TimeInterval
     private var cancellables = Set<AnyCancellable>()
+
+    /// Whether code is currently executing inside an XCTest runner environment.
+    public var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil ||
+        NSClassFromString("XCTestCase") != nil
+    }
 
     public init(
         capabilityRegistry: CapabilityRegistry = CapabilityRegistry(),
@@ -127,6 +135,7 @@ public final class AppState: ObservableObject {
     }
 
     public func setPermissionState(_ permission: MaczyPermission, state: PermissionState) {
+        explicitlySetPermissions.insert(permission)
         permissions[permission] = state
     }
 
@@ -185,10 +194,12 @@ public final class AppState: ObservableObject {
 
         // 2. Permission Gate
         for reqPerm in capability.requiredPermissions {
-            // Live-check system TCC state to avoid blocking user when permission was granted in System Settings
-            let liveStatus = PermissionManager.shared.checkStatus(for: reqPerm)
-            if liveStatus == .granted {
-                setPermissionState(reqPerm, state: .granted)
+            // In live app execution, live-check system TCC state to prevent false-positive blocks
+            if !isRunningTests && !explicitlySetPermissions.contains(reqPerm) {
+                let liveStatus = PermissionManager.shared.checkStatus(for: reqPerm)
+                if liveStatus == .granted {
+                    permissions[reqPerm] = .granted
+                }
             }
 
             let state = permissionState(reqPerm)

@@ -193,4 +193,20 @@ mod tests {
         assert!(res_ok.ok);
         assert!(res_ok.message.unwrap().contains("Trash"));
     }
+
+    #[test]
+    fn test_empty_trash_gated_by_mz_029() {
+        let mut state = AppState::new();
+        state.set_debounce_duration(std::time::Duration::from_millis(0));
+
+        let unconfirmed = Action::EmptyTrash { confirmed: false };
+        let res = state.dispatch(unconfirmed);
+        assert!(!res.ok);
+        assert_eq!(res.error_code.as_deref(), Some("GATE_MZ_029"));
+
+        let confirmed = Action::EmptyTrash { confirmed: true };
+        let res_ok = state.dispatch(confirmed);
+        assert!(res_ok.ok);
+        assert!(res_ok.message.unwrap().contains("Trash"));
+    }
 }

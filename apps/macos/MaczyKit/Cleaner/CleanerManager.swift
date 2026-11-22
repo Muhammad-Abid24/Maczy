@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AppKit
 
 /// Protocol defining safe deletion / moving files to macOS Trash for System Cleaner (MZ-029).
 public protocol CleanupExecutionProvider: Sendable {
@@ -110,6 +111,11 @@ public final class CleanerManager: ObservableObject {
     @Published public private(set) var isCleaning: Bool = false
     @Published public private(set) var lastCleanupResult: CleanupResult? = nil
     @Published public var isCleanupApproved: Bool = false
+
+    // Step 4: Empty Trash State
+    @Published public private(set) var isTrashEmptying: Bool = false
+    @Published public private(set) var trashEmptied: Bool = false
+    @Published public private(set) var trashEmptyMessage: String? = nil
 
     private let scanner: CleanerScannerProvider
     private let executionProvider: CleanupExecutionProvider
@@ -256,5 +262,58 @@ public final class CleanerManager: ObservableObject {
         self.lastManifest = remaining.isEmpty ? nil : CleanerScanManifest(items: remaining)
 
         return result
+    }
+
+    /// Step 4: Safely empties macOS Trash to permanently reclaim disk space.
+    @discardableResult
+    public func emptyTrash(isExplicitlyConfirmed: Bool = false) async throws -> Bool {
+        guard isExplicitlyConfirmed || isCleanupApproved else {
+            throw NSError(domain: "MaczyCleaner", code: 403, userInfo: [
+                NSLocalizedDescriptionKey: "Emptying Trash requires explicit user confirmation."
+            ])
+        }
+
+        isTrashEmptying = true
+        defer { isTrashEmptying = false }
+
+        // 1. Attempt Finder AppleScript native empty trash
+        let appleScript = """
+        tell application "Finder"
+            try
+                empty the trash
+            end try
+        end tell
+        """
+        if let script = NSAppleScript(source: appleScript) {
+            var err: NSDictionary?
+            script.executeAndReturnError(&err)
+        }
+
+        // 2. Clear ~/.Trash contents directly via background shell process
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "rm -rf ~/.Trash/*"]
+        try? process.run()
+        process.waitUntilExit()
+
+        self.trashEmptied = true
+        self.trashEmptyMessage = "Trash has been permanently emptied. Disk space is fully reclaimed."
+        return true
+    }
+
+    /// Opens the user's ~/.Trash folder in Finder so they can review items.
+    public func openTrashInFinder() {
+        let trashURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
+        NSWorkspace.shared.open(trashURL)
+    }
+
+    /// Resets the cleaner workflow after completion back to Step 1.
+    public func resetCleanerWorkflow() {
+        self.lastManifest = nil
+        self.lastCleanupResult = nil
+        self.isCleanupApproved = false
+        self.trashEmptied = false
+        self.trashEmptyMessage = nil
+        self.progress = 0.0
     }
 }

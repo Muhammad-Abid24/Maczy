@@ -21,11 +21,23 @@
   - Added `executeCleanup() async throws -> CleanupResult` and `requestCleanupExecution(isExplicitlyConfirmed:)` with fail-closed `GATE_MZ_029` validation.
   - Added confirmation review sheet (`cleanupConfirmationSheet`) in `CleanerDetailView` with an itemized category breakdown, total reclaimable size, safety explanation, and clear Cancel / Clean buttons before any mutation occurs.
   - Added post-cleanup result banner displaying reclaimed space and trashed item counts.
+- [x] **Configured Step 4 as Empty Trash (Menghapus Trash)**:
+  - Updated the 4-step workflow indicator: `Step 1: Scan` -> `Step 2: Review` -> `Step 3: Move to Trash` -> `Step 4: Empty Trash`.
+  - Added `Action::EmptyTrash { confirmed: bool }` in Rust core with fail-closed `GATE_MZ_029` enforcement.
+  - Added `MaczyAction.emptyTrash(confirmed: Bool)` in `MaczyAction.swift` targeting `.systemCleaner`.
+  - Added `emptyTrash() async throws -> Bool`, `openTrashInFinder()`, and `resetCleanerWorkflow()` to `CleanerManager.swift`.
+  - Designed interactive Step 4 Card in `CleanerDetailView.swift`:
+    - Shows items and storage ready to be permanently freed from Trash.
+    - Prominent "Empty Trash Permanently" button triggering native Finder AppleScript and shell cleanup.
+    - "Open Trash in Finder" option allowing user to inspect items before permanent deletion.
+    - "Start New Scan" reset action.
 - [x] **Testing & CI Verification**:
   - Added tests in `CleanerScanTests.swift`:
     - `testAppStateCleanerPurgeAction`: verifies unconfirmed fails closed with `GATE_MZ_029` and confirmed succeeds.
+    - `testAppStateEmptyTrashAction`: verifies unconfirmed fails closed with `GATE_MZ_029` and confirmed succeeds.
+    - `testCleanerManagerWorkflowReset`: verifies clean reset back to initial state.
     - `testMZ029ExecutionMovesItemsToTrashInDisposableFixture`: creates an isolated `FileManager.default.temporaryDirectory` fixture, populates dummy cache files, executes cleanup, and verifies items are moved to trash.
     - `testMZ029ExecutionStrictlyRejectsProtectedFiles`: verifies `.git` and document paths are skipped and recorded in failed paths without deletion.
-  - Added Rust core test: `test_cleaner_purge_gated_by_mz_029`.
-  - Executed `./scripts/ci.sh`: Rust fmt, clippy (0 warnings), 22 Rust tests, 230 Swift tests pass, Xcode arm64 build, and ad-hoc codesign passed.
+  - Added Rust core tests: `test_cleaner_purge_gated_by_mz_029` and `test_empty_trash_gated_by_mz_029`.
+  - Executed `./scripts/ci.sh`: Rust fmt, clippy (0 warnings), 23 Rust tests, 232 Swift tests pass, Xcode arm64 build, and ad-hoc codesign passed.
   - Executed `./scripts/dev.sh`: Rebuilt, codesigned, and re-launched `/Users/muhammadabid/Applications/Maczy.app`.

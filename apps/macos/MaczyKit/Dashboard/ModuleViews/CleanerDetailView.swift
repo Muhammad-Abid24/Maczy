@@ -142,32 +142,129 @@ public struct CleanerDetailView: View {
 
             // 4-step workflow indicator
             HStack(spacing: 12) {
-                StepBadge(index: 1, title: "Scan", active: cleanerManager.lastManifest == nil && !cleanerManager.isScanning)
+                StepBadge(
+                    index: 1,
+                    title: "Scan",
+                    active: cleanerManager.lastManifest == nil && !cleanerManager.isScanning && cleanerManager.lastCleanupResult == nil
+                )
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(.secondary)
-                StepBadge(index: 2, title: "Review", active: cleanerManager.lastManifest != nil && !showCleanupConfirmation && !cleanerManager.isCleaning)
+                StepBadge(
+                    index: 2,
+                    title: "Review",
+                    active: cleanerManager.lastManifest != nil && !showCleanupConfirmation && !cleanerManager.isCleaning && cleanerManager.lastCleanupResult == nil
+                )
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(.secondary)
-                StepBadge(index: 3, title: "Confirm", active: showCleanupConfirmation)
+                StepBadge(
+                    index: 3,
+                    title: "Move to Trash",
+                    active: showCleanupConfirmation || cleanerManager.isCleaning
+                )
                 Image(systemName: "chevron.right").font(.system(size: 10)).foregroundColor(.secondary)
-                StepBadge(index: 4, title: "Clean (MZ-029)", active: cleanerManager.isCleaning || cleanerManager.lastCleanupResult != nil)
+                StepBadge(
+                    index: 4,
+                    title: "Empty Trash",
+                    active: cleanerManager.lastCleanupResult != nil || cleanerManager.isTrashEmptying || cleanerManager.trashEmptied
+                )
             }
 
-            // Cleanup Execution Result Toast (MZ-029)
+            // Step 4: Empty Trash Card (Menghapus Trash)
             if let result = cleanerManager.lastCleanupResult {
-                HStack(spacing: 8) {
-                    Image(systemName: result.success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundColor(result.success ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(result.message)
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("All items were safely moved to macOS Trash and can be restored at any time.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: cleanerManager.trashEmptied ? "trash.slash.fill" : "trash.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(cleanerManager.trashEmptied ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.brandPurple)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Step 4: Empty macOS Trash")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(cleanerManager.trashEmptied ?
+                                 "Trash successfully emptied. All disk space has been permanently reclaimed!" :
+                                 "Items have been moved to Trash. Empty Trash now to permanently free up disk space.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
                     }
-                    Spacer()
+
+                    Divider()
+
+                    if let emptyMsg = cleanerManager.trashEmptyMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(MaczyDesignTokens.statusGreen)
+                            Text(emptyMsg)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(MaczyDesignTokens.statusGreen)
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(MaczyDesignTokens.statusGreen.opacity(0.1))
+                        .cornerRadius(6)
+                    } else {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Items in Trash")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                Text("\(result.trashedPaths.count) items (\(result.formattedReclaimedSize))")
+                                    .font(.system(size: 13, weight: .bold))
+                            }
+
+                            Spacer()
+
+                            Button(action: {
+                                cleanerManager.openTrashInFinder()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "folder")
+                                    Text("Open Trash in Finder")
+                                }
+                                .font(.system(size: 11, weight: .medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button(action: {
+                                cleanerManager.isCleanupApproved = true
+                                _ = appState.dispatch(.emptyTrash(confirmed: true))
+                            }) {
+                                HStack(spacing: 6) {
+                                    if cleanerManager.isTrashEmptying {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "trash.slash.fill")
+                                    }
+                                    Text("Empty Trash Permanently")
+                                }
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MaczyDesignTokens.statusRed)
+                            .disabled(cleanerManager.isTrashEmptying)
+                        }
+                    }
+
+                    HStack {
+                        Spacer()
+                        Button("Start New Scan") {
+                            cleanerManager.resetCleanerWorkflow()
+                        }
+                        .font(.system(size: 11))
+                        .buttonStyle(.borderless)
+                        .foregroundColor(.secondary)
+                    }
                 }
-                .padding(10)
-                .background(MaczyDesignTokens.statusGreen.opacity(0.12))
-                .cornerRadius(8)
+                .padding(14)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                )
             }
 
             // Active Hero Card

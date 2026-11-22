@@ -229,4 +229,29 @@ final class CleanerScanTests: XCTestCase {
         XCTAssertEqual(result.failedPaths.count, 2)
         XCTAssertEqual(mockExecution.trashedURLs.count, 0)
     }
+
+    func testAppStateEmptyTrashAction() {
+        let mock = MockCleanerScannerProvider()
+        let manager = CleanerManager(scanner: mock)
+        let appState = AppState(cleanerManager: manager)
+
+        let emptyUnconfirmed = appState.dispatch(.emptyTrash(confirmed: false))
+        XCTAssertFalse(emptyUnconfirmed.ok)
+        XCTAssertEqual(emptyUnconfirmed.errorCode, "GATE_MZ_029")
+
+        let emptyConfirmed = appState.dispatch(.emptyTrash(confirmed: true))
+        XCTAssertTrue(emptyConfirmed.ok)
+    }
+
+    func testCleanerManagerWorkflowReset() {
+        let mock = MockCleanerScannerProvider()
+        let manager = CleanerManager(scanner: mock, initiallyApproved: true)
+
+        manager.resetCleanerWorkflow()
+        XCTAssertNil(manager.lastManifest)
+        XCTAssertNil(manager.lastCleanupResult)
+        XCTAssertFalse(manager.isCleanupApproved)
+        XCTAssertFalse(manager.trashEmptied)
+        XCTAssertNil(manager.trashEmptyMessage)
+    }
 }

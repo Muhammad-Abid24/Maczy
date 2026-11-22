@@ -18,6 +18,7 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-007-SEPARATED-CAPTURE-RECORDING** Separated dedicated configuration tabs for Screenshot Capture and Screen Recording (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-007-FIX-CAPTURE-PERMISSIONS** Fix Capture & Recording execution + Dashboard permission live synchronization (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-015-SEPARATED-DIMENSIONS** Separated Force Physical Notch & Force Virtual Island width/height dimension adjustments (`fix/dynamic-notch-layout-position`)
 - [x] **MZ-015-CUSTOM-DIMENSIONS** Dynamic Notch height & width customizable dimensions (`fix/dynamic-notch-layout-position`)

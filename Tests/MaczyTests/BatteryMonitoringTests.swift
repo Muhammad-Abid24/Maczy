@@ -253,7 +253,7 @@ final class BatteryMonitoringTests: XCTestCase {
     @MainActor
     func testChargeLimitSafeUnsupportedState() {
         let mockBackend = MockChargeLimitBackend(isSupported: false, hardwareModel: "Macmini9,1", isDaemonAvailable: false)
-        let manager = ChargeLimitManager(backend: mockBackend)
+        let manager = ChargeLimitManager(backend: mockBackend, initiallyApproved: true)
 
         XCTAssertFalse(manager.isSupported)
         XCTAssertNil(manager.effectiveLimit)

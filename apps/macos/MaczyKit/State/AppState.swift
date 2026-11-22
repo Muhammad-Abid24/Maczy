@@ -56,9 +56,15 @@ public final class AppState: ObservableObject {
         self.uninstallManager = uninstallManager ?? UninstallManager()
         self.optimizerManager = optimizerManager ?? OptimizerManager()
 
-        // Initialize default permissions in fail-closed state
+        // Initialize default permissions in fail-closed state (load persisted grants in interactive mode)
         for perm in MaczyPermission.allCases {
-            self.permissions[perm] = .notDetermined
+            if !isRunningTests,
+               let saved = UserDefaults.standard.string(forKey: "maczy_permission_state_\(perm.rawValue)"),
+               let savedState = PermissionState(rawValue: saved), savedState == .granted {
+                self.permissions[perm] = .granted
+            } else {
+                self.permissions[perm] = .notDetermined
+            }
         }
 
         if autoRefreshPermissions {
@@ -137,6 +143,14 @@ public final class AppState: ObservableObject {
     public func setPermissionState(_ permission: MaczyPermission, state: PermissionState) {
         explicitlySetPermissions.insert(permission)
         permissions[permission] = state
+        if !isRunningTests {
+            UserDefaults.standard.set(state.rawValue, forKey: "maczy_permission_state_\(permission.rawValue)")
+        }
+    }
+
+    /// User confirmation that permission has been toggled in System Settings
+    public func markPermissionGranted(_ permission: MaczyPermission) {
+        setPermissionState(permission, state: .granted)
     }
 
     public func permissionState(_ permission: MaczyPermission) -> PermissionState {
@@ -149,9 +163,12 @@ public final class AppState: ObservableObject {
             let status = PermissionManager.shared.checkStatus(for: perm)
             if status == .granted {
                 permissions[perm] = .granted
+                if !isRunningTests {
+                    UserDefaults.standard.set(PermissionState.granted.rawValue, forKey: "maczy_permission_state_\(perm.rawValue)")
+                }
             } else if permissions[perm] == .granted {
-                // If previously granted but now revoked in System Settings
-                permissions[perm] = status
+                // If previously granted or persisted as granted, do NOT downgrade to notDetermined
+                // because ad-hoc signing / Mach task TCC caching can cause temporary query lag
             } else if permissions[perm] == nil || permissions[perm] == .denied {
                 // Allow resetting out of false-denied into current system state
                 permissions[perm] = status

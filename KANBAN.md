@@ -18,6 +18,7 @@
 - [ ] None
 
 ## DONE
+- [x] **FIX-PERMISSION-SYNC-DASHBOARD** Fix permission synchronization between macOS System Settings and Dashboard (`fix/permission-sync-dashboard`)
 - [x] **FIX-SWIFT6-SENDABLE-WARNING** Fix Swift 6 Sendable conformance warning for ProcessResourceInfo icon (`fix/system-resource-monitor-sendable`)
 - [x] **MZ-007-SEPARATED-CAPTURE-RECORDING** Separated dedicated configuration tabs for Screenshot Capture and Screen Recording (`feat/mz-007-separated-capture-recording`)
 - [x] **MZ-007-FIX-CAPTURE-PERMISSIONS** Fix Capture & Recording execution + Dashboard permission live synchronization (`fix/dynamic-notch-layout-position`)

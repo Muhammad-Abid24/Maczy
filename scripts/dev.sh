@@ -58,13 +58,22 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 </plist>
 EOF
 
-codesign -s - -f --deep "$APP_DIR" > /dev/null 2>&1
+# Determine best signing identity (prefer Apple Development certificate if found)
+SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -o '\"Apple Development:.*\"' | head -n 1 | tr -d '"' || echo "")
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY="-"
+    echo "==> Code signing with ad-hoc identity (-)"
+else
+    echo "==> Code signing with identity: $SIGN_IDENTITY"
+fi
+
+codesign -s "$SIGN_IDENTITY" -f --deep "$APP_DIR" > /dev/null 2>&1
 
 USER_APPS="$HOME/Applications"
 mkdir -p "$USER_APPS"
 rm -rf "$USER_APPS/Maczy.app"
 cp -R "$APP_DIR" "$USER_APPS/Maczy.app"
-codesign -s - -f --deep "$USER_APPS/Maczy.app" > /dev/null 2>&1
+codesign -s "$SIGN_IDENTITY" -f --deep "$USER_APPS/Maczy.app" > /dev/null 2>&1
 
 echo "==> Installed to $USER_APPS/Maczy.app and .build/Maczy.app"
 echo "==> Launching $USER_APPS/Maczy.app..."

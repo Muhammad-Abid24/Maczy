@@ -56,6 +56,9 @@ public struct PermissionCenterView: View {
                         },
                         onOpenSettings: {
                             PermissionManager.shared.openSettings(for: perm)
+                        },
+                        onConfirmAllowed: {
+                            appState.markPermissionGranted(perm)
                         }
                     )
                 }
@@ -79,6 +82,7 @@ struct PermissionCard: View {
     let state: PermissionState
     let onGrant: () -> Void
     let onOpenSettings: () -> Void
+    var onConfirmAllowed: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -132,12 +136,20 @@ struct PermissionCard: View {
                             .font(.system(size: 11))
                             .foregroundColor(MaczyDesignTokens.statusGreen)
                     } else if state == .denied || state == .restricted {
+                        if let onConfirmAllowed = onConfirmAllowed {
+                            Button("Confirm Allowed") {
+                                onConfirmAllowed()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .tint(MaczyDesignTokens.statusGreen)
+                        }
+
                         Button("Request Access") {
                             onGrant()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .tint(MaczyDesignTokens.brandPurple)
 
                         Button("Open Settings") {
                             onOpenSettings()
@@ -149,12 +161,20 @@ struct PermissionCard: View {
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     } else {
+                        if let onConfirmAllowed = onConfirmAllowed {
+                            Button("Confirm Allowed") {
+                                onConfirmAllowed()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .tint(MaczyDesignTokens.statusGreen)
+                        }
+
                         Button("Request Access") {
                             onGrant()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .tint(MaczyDesignTokens.brandPurple)
 
                         Button("Settings") {
                             onOpenSettings()

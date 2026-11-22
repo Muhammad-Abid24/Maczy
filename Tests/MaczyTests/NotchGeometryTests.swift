@@ -162,4 +162,21 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertGreaterThan(profile.notchRect.width, 0)
         XCTAssertGreaterThan(profile.notchRect.height, 0)
     }
+
+    @MainActor
+    func testOutsideClickMonitoringLifecycleAndDismissal() {
+        let coordinator = NotchCoordinator(profile: .fallback)
+        coordinator.setExpansionState(.compact)
+        XCTAssertFalse(coordinator.windowController.isMonitoringOutsideClicks)
+
+        coordinator.setExpansionState(.expanded)
+        XCTAssertTrue(coordinator.windowController.isMonitoringOutsideClicks)
+
+        // Point outside the panel (e.g. at bottom-left corner of screen)
+        let outsidePoint = NSPoint(x: 10, y: 10)
+        let handled = coordinator.windowController.handleSimulatedClick(at: outsidePoint)
+        XCTAssertTrue(handled)
+        XCTAssertEqual(coordinator.expansionState, .compact)
+        XCTAssertFalse(coordinator.windowController.isMonitoringOutsideClicks)
+    }
 }

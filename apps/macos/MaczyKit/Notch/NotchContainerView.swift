@@ -235,30 +235,18 @@ public struct NotchContainerView: View {
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    // Battery telemetry badge
-                    HStack(spacing: 4) {
-                        Image(systemName: appState.batterySnapshot.batteryIconName)
-                            .font(.system(size: 11))
-                        Text("\(appState.batterySnapshot.stateOfCharge)%")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    }
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(4)
-
-                    // Close button
-                    Button(action: {
-                        coordinator.setExpansionState(.compact)
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    .buttonStyle(.plain)
+                // Battery telemetry badge
+                HStack(spacing: 4) {
+                    Image(systemName: appState.batterySnapshot.batteryIconName)
+                        .font(.system(size: 11))
+                    Text("\(appState.batterySnapshot.stateOfCharge)%")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                 }
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(4)
             }
 
             // MARK: - TWS / AirPods Connection Card
@@ -565,18 +553,18 @@ public struct NotchContainerView: View {
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.6))
                 Spacer()
-                Text("Press ⌘⇧N to collapse")
+                Text("Click outside to collapse • ⌘⇧N")
                     .font(.system(size: 9))
                     .foregroundColor(.white.opacity(0.4))
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.95))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.black)
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.4), radius: 12, x: 0, y: 6)
     }

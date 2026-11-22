@@ -20,12 +20,16 @@ public final class NotchCoordinator: ObservableObject {
         }
     }
 
-    private let windowController: NotchOverlayWindowController
+    public let windowController: NotchOverlayWindowController
 
     public init(profile: NotchScreenProfile? = nil) {
         let initialProfile = profile ?? NotchGeometry.detectProfile()
         self.activeProfile = initialProfile
-        self.windowController = NotchOverlayWindowController()
+        let controller = NotchOverlayWindowController()
+        self.windowController = controller
+        controller.onOutsideClick = { [weak self] in
+            self?.setExpansionState(.compact)
+        }
 
         // Observe screen changes (e.g. plugging/unplugging external display)
         NotificationCenter.default.addObserver(

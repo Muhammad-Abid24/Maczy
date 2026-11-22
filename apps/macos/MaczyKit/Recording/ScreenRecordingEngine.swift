@@ -189,12 +189,22 @@ public final class ScreenRecordingEngine: NSObject, SCStreamOutput, @unchecked S
             captureHeight = validDisplay.height
 
         case .window(let windowID):
-            guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
+            let window: SCWindow?
+            if windowID == 0 {
+                let myPID = ProcessInfo.processInfo.processIdentifier
+                window = content.windows.first(where: {
+                    $0.isOnScreen && $0.frame.width > 50 && $0.frame.height > 50 && $0.owningApplication?.processID != myPID
+                }) ?? content.windows.first(where: { $0.isOnScreen && $0.frame.width > 50 })
+            } else {
+                window = content.windows.first(where: { $0.windowID == windowID })
+            }
+
+            guard let validWindow = window else {
                 throw RecordingError.streamInitializationFailed("Window target not found")
             }
-            filter = SCContentFilter(desktopIndependentWindow: window)
-            captureWidth = Int(window.frame.width)
-            captureHeight = Int(window.frame.height)
+            filter = SCContentFilter(desktopIndependentWindow: validWindow)
+            captureWidth = max(2, Int(validWindow.frame.width))
+            captureHeight = max(2, Int(validWindow.frame.height))
 
         case .region(let rect, let displayID):
             let display = findDisplay(displayID: displayID, in: content)

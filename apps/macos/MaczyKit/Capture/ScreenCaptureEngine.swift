@@ -110,6 +110,10 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
 
     private func captureDisplay(displayID: CGDirectDisplayID?, content: SCShareableContent) async throws -> CapturedImageItem {
         guard let display = findDisplay(displayID: displayID, in: content) else {
+            let targetID = displayID ?? CGMainDisplayID()
+            if let fallbackImage = CGDisplayCreateImage(targetID) {
+                return CapturedImageItem(image: fallbackImage, target: .fullscreen(displayID: displayID))
+            }
             throw CaptureError.noDisplaysAvailable
         }
 
@@ -124,25 +128,40 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
             return CapturedImageItem(image: image, target: .fullscreen(displayID: displayID))
         } catch {
+            let targetID = displayID ?? CGMainDisplayID()
+            if let fallbackImage = CGDisplayCreateImage(targetID) {
+                return CapturedImageItem(image: fallbackImage, target: .fullscreen(displayID: displayID))
+            }
             throw CaptureError.captureFailed(error.localizedDescription)
         }
     }
 
     private func captureWindow(windowID: CGWindowID, content: SCShareableContent) async throws -> CapturedImageItem {
-        guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
+        let window: SCWindow?
+        if windowID == 0 {
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            // Prefer the frontmost on-screen application window not belonging to Maczy
+            window = content.windows.first(where: {
+                $0.isOnScreen && $0.frame.width > 50 && $0.frame.height > 50 && $0.owningApplication?.processID != myPID
+            }) ?? content.windows.first(where: { $0.isOnScreen && $0.frame.width > 50 })
+        } else {
+            window = content.windows.first(where: { $0.windowID == windowID })
+        }
+
+        guard let targetWindow = window else {
             throw CaptureError.targetNotFound
         }
 
-        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let filter = SCContentFilter(desktopIndependentWindow: targetWindow)
         let config = SCStreamConfiguration()
-        config.width = Int(window.frame.width)
-        config.height = Int(window.frame.height)
+        config.width = max(1, Int(targetWindow.frame.width))
+        config.height = max(1, Int(targetWindow.frame.height))
         config.showsCursor = false
         config.capturesAudio = false
 
         do {
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            return CapturedImageItem(image: image, target: .window(windowID: windowID))
+            return CapturedImageItem(image: image, target: .window(windowID: targetWindow.windowID))
         } catch {
             throw CaptureError.captureFailed(error.localizedDescription)
         }
@@ -153,9 +172,18 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
             throw CaptureError.noDisplaysAvailable
         }
 
+        // ScreenCaptureKit sourceRect coordinate origin is TOP-LEFT of display
+        // While AppKit rect coordinate origin is BOTTOM-LEFT of display!
+        var scSourceRect = rect
+        let displayHeight = CGFloat(display.height)
+        if rect.origin.y >= 0 && rect.maxY <= displayHeight {
+            let flippedY = max(0, displayHeight - rect.maxY)
+            scSourceRect = CGRect(x: rect.origin.x, y: flippedY, width: rect.width, height: rect.height)
+        }
+
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
-        config.sourceRect = rect
+        config.sourceRect = scSourceRect
         config.width = max(1, Int(rect.width))
         config.height = max(1, Int(rect.height))
         config.showsCursor = false

@@ -1,29 +1,29 @@
 # TASK.md — Current Antigravity Task
 
-## Active selection: MZ-015-SEPARATED-DIMENSIONS (DONE) — Separated Force Physical Notch & Force Virtual Island Dimension Adjustments
-**Objective:** Decouple and independently configure dimensions (width & height for both compact silhouette and expanded card) between Force Physical Notch (hardware camera housing integration) and Force Virtual Island (floating capsule on external/desktop monitors), with isolated UserDefaults persistence, independent reset actions, and tabbed UI controls.
+## Active selection: MZ-007-FIX-CAPTURE-PERMISSIONS (DONE) — Fix Capture & Recording Execution + Dashboard Permission Synchronization
+**Objective:** Resolve end-to-end screen capture and recording failures and fix permission synchronization in the Dashboard so that granted macOS permissions (Screen Recording, Microphone, Accessibility) properly reflect immediately and eliminate false-positive `PERMISSION_REQUIRED` blocks.
 
 ### Completed this task
-- [x] **Decoupled Geometry Engine**:
-  - Extended `NotchGeometry.detectProfile` with dedicated `physicalCompactSize`, `physicalExpandedSize`, `virtualCompactSize`, and `virtualExpandedSize` parameters.
-  - Provided backwards-compatible overload for legacy callers.
-  - Strictly routes physical sizes to physical notch calculations and virtual sizes to floating island calculations.
-- [x] **Isolated Coordinator State & Persistence**:
-  - Implemented 8 distinct `@Published` properties in `NotchCoordinator`:
-    - Physical: `customPhysicalCompactWidth`, `customPhysicalCompactHeight`, `customPhysicalExpandedWidth`, `customPhysicalExpandedHeight`.
-    - Virtual: `customVirtualCompactWidth`, `customVirtualCompactHeight`, `customVirtualExpandedWidth`, `customVirtualExpandedHeight`.
-  - Persisted separately in `UserDefaults` (`maczy.notch.physical.*` vs `maczy.notch.virtual.*`).
-  - Added dedicated reset functions: `resetPhysicalDimensionsToDefault()`, `resetVirtualDimensionsToDefault()`, and global `resetDimensionsToDefault()`.
-  - Maintained proxy bindings (`currentCompactWidth`, etc.) for active mode responsiveness.
-- [x] **Tabbed Native Dashboard UI**:
-  - Added segmented target selector `[Force Physical Notch | Force Virtual Island]` in `NotchDetailView.swift`.
-  - Synced automatically with active presentation mode changes while allowing cross-mode configuration.
-  - Tailored slider ranges and color accents:
-    - Physical Notch: compact width 140–480 pt, compact height 24–54 pt, expanded width 320–680 pt, expanded height 120–320 pt.
-    - Virtual Island: compact width 180–600 pt, compact height 24–64 pt, expanded width 320–750 pt, expanded height 120–360 pt.
-  - Dedicated "Reset Physical Defaults" and "Reset Virtual Defaults" buttons.
+- [x] **Live Permission State Synchronization**:
+  - Upgraded `AppState.permissions` to `@Published public var permissions: [MaczyPermission: PermissionState] = [:]` so SwiftUI views reactively re-render when permissions change.
+  - Implemented `@MainActor public func refreshPermissions()` in `AppState` that queries system TCC status via `PermissionManager.shared.checkStatus(for:)` for all permissions.
+  - Bound `NSApplication.didBecomeActiveNotification` observers in `AppState`, `DashboardView`, `PermissionCenterView`, and `CaptureDetailView` to automatically refresh permission states when returning from macOS System Settings.
+  - In `AppState.dispatch(...)`, added live TCC check during the permission gate: if `PermissionManager.shared.checkStatus(for: reqPerm) == .granted`, state is immediately promoted to `.granted`, permanently eliminating false-positive blocks.
+  - Added "Refresh Status" button in `PermissionCenterView` header.
+- [x] **Screen Capture & Window Target Fixes**:
+  - In `ScreenCaptureEngine.captureWindow`: added intelligent resolution for `windowID == 0` to select the frontmost visible on-screen application window (excluding Maczy's own process ID).
+  - In `ScreenCaptureEngine.captureArea`: corrected coordinate space mapping by flipping Y coordinates from AppKit's bottom-left origin to ScreenCaptureKit's top-left origin.
+  - In `ScreenCaptureEngine.captureDisplay`: added fallback to `CGDisplayCreateImage` for display capture.
+- [x] **Screen Recording Lifecycle Fixes**:
+  - In `ScreenRecordingEngine.startRecording`: handled `windowID == 0` by dynamically resolving the frontmost application window.
+  - In `CaptureDetailView`:
+    - Added reactive Screen Recording permission status banner with deep link to System Settings and live "Refresh Status" button.
+    - Added active recording progress indicator and a prominent "Stop Recording" button mapped to `MaczyAction.stopScreenRecording`.
+    - Dynamically mapped screenshot mode ("area" -> "region", "window" -> "window", "fullscreen" -> "display") when starting recording.
 - [x] **Unit & Integration Tests**:
-  - Added `testSeparatedPhysicalAndVirtualDimensions` in `Tests/MaczyTests/NotchGeometryTests.swift`.
-  - Verified 202 Swift tests + 20 Rust tests pass (100% green).
+  - Added `testAppStateRefreshPermissionsSync` and `testPublishedPermissionsDictionaryObservability` in `Tests/MaczyTests/PermissionTests.swift`.
+  - Added `testCaptureWindowTargetZeroEquivalence` and `testAppStateStopScreenRecordingPipelineIntegration` in `Tests/MaczyTests/CaptureTests.swift`.
+  - Passed all 20 Rust unit/perf tests + 206 Swift package tests with 0 errors and 0 warnings.
+  - Verified Xcode arm64 build and ad-hoc code signing.
 - [x] **Branch & Push**:
   - Committed and pushed strictly to feature branch `fix/dynamic-notch-layout-position` (NEVER to `main`).

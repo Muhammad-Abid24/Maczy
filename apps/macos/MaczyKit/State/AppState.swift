@@ -23,7 +23,7 @@ public final class AppState: ObservableObject {
     public let uninstallManager: UninstallManager
     public let optimizerManager: OptimizerManager
 
-    private var permissions: [MaczyPermission: PermissionState] = [:]
+    @Published public var permissions: [MaczyPermission: PermissionState] = [:]
     private var lastDispatchedActions: [String: Date] = [:]
     public var debounceInterval: TimeInterval
     private var cancellables = Set<AnyCancellable>()
@@ -36,7 +36,8 @@ public final class AppState: ObservableObject {
         updateManager: UpdateManager? = nil,
         cleanerManager: CleanerManager? = nil,
         uninstallManager: UninstallManager? = nil,
-        optimizerManager: OptimizerManager? = nil
+        optimizerManager: OptimizerManager? = nil,
+        autoRefreshPermissions: Bool = false
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
@@ -50,6 +51,21 @@ public final class AppState: ObservableObject {
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
             self.permissions[perm] = .notDetermined
+        }
+
+        if autoRefreshPermissions {
+            refreshPermissions()
+        }
+
+        // Live refresh permissions when application becomes active (e.g. returning from System Settings)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPermissions()
+            }
         }
 
         // Initialize all 7 modules
@@ -118,6 +134,16 @@ public final class AppState: ObservableObject {
         permissions[permission] ?? .notDetermined
     }
 
+    /// Queries system TCC status via PermissionManager and updates published permission states.
+    public func refreshPermissions() {
+        for perm in MaczyPermission.allCases {
+            let status = PermissionManager.shared.checkStatus(for: perm)
+            if status != .notDetermined || permissions[perm] == nil {
+                permissions[perm] = status
+            }
+        }
+    }
+
     /// Primary Action Pipeline:
     /// Action -> Capability Gate -> Permission Gate -> Command -> Result -> State Update
     @discardableResult
@@ -153,6 +179,12 @@ public final class AppState: ObservableObject {
 
         // 2. Permission Gate
         for reqPerm in capability.requiredPermissions {
+            // Live-check system TCC state to avoid blocking user when permission was granted in System Settings
+            let liveStatus = PermissionManager.shared.checkStatus(for: reqPerm)
+            if liveStatus == .granted {
+                setPermissionState(reqPerm, state: .granted)
+            }
+
             let state = permissionState(reqPerm)
             guard state.isGranted else {
                 let msg = "Operation requires \(reqPerm.displayName) permission (\(state.rawValue))"

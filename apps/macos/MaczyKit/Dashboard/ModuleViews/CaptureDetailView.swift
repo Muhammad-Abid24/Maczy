@@ -6,15 +6,76 @@ public struct CaptureDetailView: View {
     @State private var selectedResolution: RecordingResolutionPreset = .native
     @State private var systemAudioEnabled: Bool = false
     @State private var microphoneEnabled: Bool = false
+    @State private var isRecording: Bool = false
 
     public init(appState: AppState) {
         self.appState = appState
     }
 
+    private var hasScreenRecordingPermission: Bool {
+        appState.permissionState(.screenRecording) == .granted
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Capture & Recording")
-                .font(.system(size: 20, weight: .bold))
+            HStack {
+                Text("Capture & Recording")
+                    .font(.system(size: 20, weight: .bold))
+                Spacer()
+                if hasScreenRecordingPermission {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(MaczyDesignTokens.statusGreen)
+                            .frame(width: 7, height: 7)
+                        Text("Permission Granted")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(MaczyDesignTokens.statusGreen)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(MaczyDesignTokens.statusGreen.opacity(0.12))
+                    .cornerRadius(6)
+                }
+            }
+
+            // Permission Warning Banner if Screen Recording is not granted
+            if !hasScreenRecordingPermission {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(MaczyDesignTokens.statusOrange)
+                        .font(.system(size: 18))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Screen Recording Permission Required")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.primary)
+                        Text("macOS requires explicit authorization in System Settings to capture screenshots and record the screen.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button("Open Settings") {
+                        PermissionManager.shared.openSettings(for: .screenRecording)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button("Refresh Status") {
+                        appState.refreshPermissions()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                .padding(12)
+                .background(MaczyDesignTokens.statusOrange.opacity(0.12))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MaczyDesignTokens.statusOrange.opacity(0.35), lineWidth: 1)
+                )
+            }
 
             // Modes
             VStack(alignment: .leading, spacing: 10) {
@@ -66,6 +127,34 @@ public struct CaptureDetailView: View {
                 }
             }
 
+            // Active Recording Indicator & Stop Action
+            if isRecording {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(MaczyDesignTokens.statusRed)
+                        .frame(width: 10, height: 10)
+                    Text("Recording in progress...")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(MaczyDesignTokens.statusRed)
+
+                    Spacer()
+
+                    Button("Stop Recording") {
+                        _ = appState.dispatch(.stopScreenRecording)
+                        isRecording = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(MaczyDesignTokens.statusRed)
+                }
+                .padding(12)
+                .background(MaczyDesignTokens.statusRed.opacity(0.1))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MaczyDesignTokens.statusRed.opacity(0.3), lineWidth: 1)
+                )
+            }
+
             HStack(spacing: 12) {
                 Button("Capture Screenshot (\(selectedMode.capitalized))") {
                     _ = appState.dispatch(.captureScreenshot(mode: selectedMode))
@@ -73,14 +162,23 @@ public struct CaptureDetailView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(MaczyDesignTokens.brandPurple)
 
-                Button("Start Recording (\(selectedResolution.displayName))") {
-                    _ = appState.dispatch(.startScreenRecording(
-                        target: "display",
-                        systemAudio: systemAudioEnabled,
-                        microphone: microphoneEnabled
-                    ))
+                if !isRecording {
+                    Button("Start Recording (\(selectedResolution.displayName))") {
+                        let recordingTarget: String
+                        switch selectedMode {
+                        case "area": recordingTarget = "region"
+                        case "window": recordingTarget = "window"
+                        default: recordingTarget = "display"
+                        }
+                        _ = appState.dispatch(.startScreenRecording(
+                            target: recordingTarget,
+                            systemAudio: systemAudioEnabled,
+                            microphone: microphoneEnabled
+                        ))
+                        isRecording = ScreenRecordingEngine.shared.isRecording
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
 
             Divider()
@@ -103,6 +201,14 @@ public struct CaptureDetailView: View {
         .padding(18)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
         .cornerRadius(12)
+        .onAppear {
+            appState.refreshPermissions()
+            isRecording = ScreenRecordingEngine.shared.isRecording
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            appState.refreshPermissions()
+            isRecording = ScreenRecordingEngine.shared.isRecording
+        }
     }
 }
 

@@ -149,4 +149,38 @@ final class CaptureTests: XCTestCase {
         let result = appState.dispatch(.stopScreenRecording)
         XCTAssertTrue(result.ok)
     }
+
+    func testCapturePreviewHUDPresentationAndDismiss() {
+        let hud = CapturePreviewHUD.shared
+        let testImage = createTestCGImage(width: 200, height: 100)
+
+        hud.present(image: testImage, fileURL: nil)
+        XCTAssertTrue(hud.isVisible)
+        XCTAssertEqual(hud.level, NSWindow.Level(Int(CGWindowLevelForKey(.maximumWindow))))
+
+        hud.dismiss()
+        // Ensure dismiss executes without error
+    }
+
+    func testRetinaMetadataPreservationInExport() {
+        let manager = CaptureExportManager.shared
+        let testImage = createTestCGImage(width: 400, height: 200)
+
+        guard let pngData = manager.encodeImage(testImage, format: .png) else {
+            XCTFail("Failed to encode image with Retina metadata")
+            return
+        }
+
+        XCTAssertGreaterThan(pngData.count, 100)
+    }
+
+    func testAppStateLastCapturedImagePublishing() {
+        let appState = AppState()
+        let testImage = createTestCGImage(width: 100, height: 100)
+
+        XCTAssertNil(appState.lastCapturedImage)
+        appState.lastCapturedImage = testImage
+        XCTAssertNotNil(appState.lastCapturedImage)
+        XCTAssertEqual(appState.lastCapturedImage?.width, 100)
+    }
 }

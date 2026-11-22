@@ -77,17 +77,16 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
         return true
     }
 
-    /// Captures the specified target using ScreenCaptureKit.
+    /// Captures the specified target using ScreenCaptureKit with full native Retina quality.
     public func capture(target: CaptureTarget) async throws -> CapturedImageItem {
-        guard isAuthorized() else {
-            throw CaptureError.permissionDenied
-        }
-
         // Fetch shareable content
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         } catch {
+            if !isAuthorized() {
+                throw CaptureError.permissionDenied
+            }
             throw CaptureError.captureFailed(error.localizedDescription)
         }
 
@@ -108,6 +107,16 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
 
     // MARK: - Private Capture Implementations
 
+    private func screenScale(for displayID: CGDirectDisplayID?) -> CGFloat {
+        if let id = displayID,
+           let screen = NSScreen.screens.first(where: {
+               ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == id
+           }) {
+            return screen.backingScaleFactor
+        }
+        return NSScreen.main?.backingScaleFactor ?? 2.0
+    }
+
     private func captureDisplay(displayID: CGDirectDisplayID?, content: SCShareableContent) async throws -> CapturedImageItem {
         guard let display = findDisplay(displayID: displayID, in: content) else {
             let targetID = displayID ?? CGMainDisplayID()
@@ -117,10 +126,14 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
             throw CaptureError.noDisplaysAvailable
         }
 
+        let scale = screenScale(for: displayID ?? display.displayID)
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
-        config.width = display.width
-        config.height = display.height
+        config.width = max(1, Int(CGFloat(display.width) * scale))
+        config.height = max(1, Int(CGFloat(display.height) * scale))
+        config.scalesToFit = false
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.colorSpaceName = CGColorSpace.displayP3
         config.showsCursor = false
         config.capturesAudio = false
 
@@ -152,10 +165,14 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
             throw CaptureError.targetNotFound
         }
 
+        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
         let filter = SCContentFilter(desktopIndependentWindow: targetWindow)
         let config = SCStreamConfiguration()
-        config.width = max(1, Int(targetWindow.frame.width))
-        config.height = max(1, Int(targetWindow.frame.height))
+        config.width = max(1, Int(targetWindow.frame.width * scale))
+        config.height = max(1, Int(targetWindow.frame.height * scale))
+        config.scalesToFit = false
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.colorSpaceName = CGColorSpace.displayP3
         config.showsCursor = false
         config.capturesAudio = false
 
@@ -181,11 +198,15 @@ public final class ScreenCaptureEngine: @unchecked Sendable {
             scSourceRect = CGRect(x: rect.origin.x, y: flippedY, width: rect.width, height: rect.height)
         }
 
+        let scale = screenScale(for: displayID ?? display.displayID)
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
         config.sourceRect = scSourceRect
-        config.width = max(1, Int(rect.width))
-        config.height = max(1, Int(rect.height))
+        config.width = max(1, Int(rect.width * scale))
+        config.height = max(1, Int(rect.height * scale))
+        config.scalesToFit = false
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.colorSpaceName = CGColorSpace.displayP3
         config.showsCursor = false
         config.capturesAudio = false
 

@@ -15,6 +15,7 @@ const char* maczy_module_name(uint32_t index);
 bool maczy_module_is_implemented(uint32_t index);
 char* maczy_module_status_message(uint32_t index);
 void maczy_free_string(char* s);
+uint32_t maczy_classify_leftover_path(const char* path);
 
 #ifdef __cplusplus
 }

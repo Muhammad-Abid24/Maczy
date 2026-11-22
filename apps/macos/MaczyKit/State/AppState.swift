@@ -17,6 +17,11 @@ public final class AppState: ObservableObject {
 
     public let capabilityRegistry: CapabilityRegistry
     public let eventBus: EventBus
+    public let alwaysOnManager: AlwaysOnManager
+    public let updateManager: UpdateManager
+    public let cleanerManager: CleanerManager
+    public let uninstallManager: UninstallManager
+    public let optimizerManager: OptimizerManager
 
     private var permissions: [MaczyPermission: PermissionState] = [:]
     private var lastDispatchedActions: [String: Date] = [:]
@@ -26,11 +31,21 @@ public final class AppState: ObservableObject {
     public init(
         capabilityRegistry: CapabilityRegistry = CapabilityRegistry(),
         eventBus: EventBus = .shared,
-        debounceInterval: TimeInterval = 0.2
+        debounceInterval: TimeInterval = 0.2,
+        alwaysOnManager: AlwaysOnManager? = nil,
+        updateManager: UpdateManager? = nil,
+        cleanerManager: CleanerManager? = nil,
+        uninstallManager: UninstallManager? = nil,
+        optimizerManager: OptimizerManager? = nil
     ) {
         self.capabilityRegistry = capabilityRegistry
         self.eventBus = eventBus
         self.debounceInterval = debounceInterval
+        self.alwaysOnManager = alwaysOnManager ?? AlwaysOnManager()
+        self.updateManager = updateManager ?? UpdateManager()
+        self.cleanerManager = cleanerManager ?? CleanerManager()
+        self.uninstallManager = uninstallManager ?? UninstallManager()
+        self.optimizerManager = optimizerManager ?? OptimizerManager()
 
         // Initialize default permissions in fail-closed state
         for perm in MaczyPermission.allCases {
@@ -66,7 +81,27 @@ public final class AppState: ObservableObject {
         BatteryMonitor.shared.$currentSnapshot
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newSnapshot in
-                self?.batterySnapshot = newSnapshot
+                guard let self = self else { return }
+                self.batterySnapshot = newSnapshot
+                self.alwaysOnManager.checkBatterySafety(
+                    percentage: Double(newSnapshot.stateOfCharge),
+                    isCharging: newSnapshot.isACConnected || newSnapshot.isCharging
+                )
+            }
+            .store(in: &cancellables)
+
+        // Bind Always On session state to module runtime
+        self.alwaysOnManager.$activeSession
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] session in
+                guard let self = self else { return }
+                if let session = session {
+                    let msg = session.durationSeconds.map { "Awake (\($0 / 60)m)" } ?? "Awake (Indefinite)"
+                    self.transitionRuntime(moduleId: .alwaysOn, to: .running, message: msg)
+                } else {
+                    let msg = self.alwaysOnManager.lastReleaseReason?.message ?? "Awake session idle"
+                    self.transitionRuntime(moduleId: .alwaysOn, to: .idle, message: msg)
+                }
             }
             .store(in: &cancellables)
     }
@@ -241,22 +276,40 @@ public final class AppState: ObservableObject {
 
         case .checkForUpdates:
             transitionRuntime(moduleId: moduleId, to: .running, message: "Checking for updates...")
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let newStatus = await self.updateManager.checkForUpdates()
+                self.transitionRuntime(
+                    moduleId: moduleId,
+                    to: .idle,
+                    message: newStatus.statusText
+                )
+            }
             result = CommandResult.success(message: "Update check initiated")
 
         case .startAwakeSession(let duration):
-            let msg = duration.map { "Awake session active for \($0) minutes" } ?? "Awake session active indefinitely"
-            transitionRuntime(moduleId: moduleId, to: .running, message: msg)
-            result = CommandResult.success(message: msg)
+            let preset = AlwaysOnPreset(minutes: duration)
+            let started = alwaysOnManager.startSession(preset: preset)
+            if started {
+                let msg = duration.map { "Awake session active for \($0) minutes" } ?? "Awake session active indefinitely"
+                transitionRuntime(moduleId: moduleId, to: .running, message: msg)
+                result = CommandResult.success(message: msg)
+            } else {
+                result = CommandResult.failure(errorCode: "IOPM_ASSERTION_FAILED", message: "Failed to create power assertion")
+            }
 
         case .stopAwakeSession:
+            alwaysOnManager.stopSession(reason: .manualStop)
             transitionRuntime(moduleId: moduleId, to: .idle, message: "Awake session ended")
             result = CommandResult.success(message: "Awake session stopped")
 
         case .startCleanerScan:
+            cleanerManager.startScan()
             transitionRuntime(moduleId: moduleId, to: .running, message: "Safe scan in progress...")
             result = CommandResult.success(message: "Safe read-only scan started")
 
         case .cancelCleanerScan:
+            cleanerManager.cancelScan()
             transitionRuntime(moduleId: moduleId, to: .idle, message: "Scan cancelled")
             result = CommandResult.success(message: "Scan cancelled")
         }

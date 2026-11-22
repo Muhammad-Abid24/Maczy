@@ -43,7 +43,7 @@ The Dashboard follows an **owner-approved OpenDesign project through OpenDesign 
 | **Smart Unlock** | **Goal: unlock the actual locked macOS user session with on-device facial recognition via a Mac camera**, with opt-in enrollment, liveness/security checks and normal macOS authentication fallback. **System-unlock integration is a research and security gate, not a working or guaranteed capability.** |
 | **Automatic Updates** | Sparkle-based signed update verification, checks/downloads and planned stable/beta/nightly channels |
 | **Always On** | Prevent idle system/display sleep, timed sessions, power-aware policies and quick toggles |
-| **System Cleaner** | Disk analysis, app leftovers, developer caches, safe scan/review workflows, explicit cleanup confirmation and history |
+| **System Cleaner & Optimizer** | Three integrated sections: **Cleaner** (safe cache scan & review), **Uninstall** (smart application uninstaller, leftover safety analysis, macOS Trash workflow), and **Optimize** (login items with deep link, evidence-first maintenance, developer artifact caches, real-time system monitoring) |
 
 **Every module is accessible from the Dashboard and Menu Bar.** Dynamic Notch remains optional; controls adapt to hardware, macOS versions and permissions.
 

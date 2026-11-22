@@ -5,6 +5,7 @@
 
 pub mod actions;
 pub mod capability;
+pub mod cleaner_safety;
 pub mod event_bus;
 pub mod modules;
 pub mod permissions;
@@ -12,6 +13,7 @@ pub mod state;
 
 pub use actions::{Action, CommandResult};
 pub use capability::{CapabilityRegistry, ModuleCapability};
+pub use cleaner_safety::{classify_leftover_path, LeftoverSafetyLevel};
 pub use event_bus::{AppEvent, EventBus};
 pub use modules::{MaczyModule, ModuleId, MODULE_COUNT};
 pub use permissions::{Permission, PermissionState};

@@ -10,6 +10,7 @@ public struct NotchContainerView: View {
     @ObservedObject var liveCoordinator: LiveActivityCoordinator = .shared
     @ObservedObject var clipboardManager: ClipboardManager = .shared
     @ObservedObject var windowSnapManager: WindowSnapManager = .shared
+    @ObservedObject var twsCoordinator: TWSNotchCoordinator = .shared
     @State private var isHovered: Bool = false
 
     public init(coordinator: NotchCoordinator) {
@@ -83,6 +84,36 @@ public struct NotchContainerView: View {
                     .background(Color.black.opacity(0.95))
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(MaczyDesignTokens.brandPurple.opacity(0.4), lineWidth: 1))
+
+                } else if let tws = twsCoordinator.activeConnectionToast {
+                    // AirPods / TWS Connection Toast Pill
+                    HStack(spacing: 8) {
+                        Image(systemName: tws.type.iconName)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(MaczyDesignTokens.statusGreen)
+
+                        Text(tws.name)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        if let battery = tws.battery {
+                            Text(battery.summaryText)
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.85))
+                        }
+
+                        Spacer()
+
+                        Circle()
+                            .fill(MaczyDesignTokens.statusGreen)
+                            .frame(width: 5, height: 5)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.95))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(MaczyDesignTokens.statusGreen.opacity(0.4), lineWidth: 1))
 
                 } else if let activity = liveCoordinator.primaryActivity {
                     // Live Activity or Notification Pill
@@ -228,6 +259,67 @@ public struct NotchContainerView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+
+            // MARK: - TWS / AirPods Connection Card
+            if let tws = twsCoordinator.activeConnectionToast {
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(MaczyDesignTokens.statusGreen.opacity(0.2))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: tws.type.iconName)
+                                .font(.system(size: 14))
+                                .foregroundColor(MaczyDesignTokens.statusGreen)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tws.name)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(MaczyDesignTokens.statusGreen)
+                                    .frame(width: 5, height: 5)
+                                Text("Connected")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+
+                        Spacer()
+
+                        Button(action: {
+                            twsCoordinator.dismiss()
+                        }) {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 13))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if let b = tws.battery {
+                        HStack(spacing: 10) {
+                            if let left = b.left {
+                                BatteryBadge(label: "L", percentage: left)
+                            }
+                            if let right = b.right {
+                                BatteryBadge(label: "R", percentage: right)
+                            }
+                            if let casePct = b.caseBattery {
+                                BatteryBadge(label: "Case", percentage: casePct)
+                            }
+                            if let single = b.single, b.left == nil && b.right == nil {
+                                BatteryBadge(label: "Battery", percentage: single)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(10)
             }
 
             // MARK: - Now Playing Card (Active Media)
@@ -382,10 +474,14 @@ public struct NotchContainerView: View {
 
                 NotchActionButton(
                     icon: "cup.and.saucer.fill",
-                    title: "Always On",
-                    color: MaczyDesignTokens.statusOrange
+                    title: appState.alwaysOnManager.isActive ? "Awake (\(appState.alwaysOnManager.formattedRemainingTime))" : "Always On",
+                    color: appState.alwaysOnManager.isActive ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange
                 ) {
-                    _ = appState.dispatch(.startAwakeSession(durationMinutes: nil))
+                    if appState.alwaysOnManager.isActive {
+                        _ = appState.dispatch(.stopAwakeSession)
+                    } else {
+                        _ = appState.dispatch(.startAwakeSession(durationMinutes: nil))
+                    }
                 }
 
                 NotchActionButton(
@@ -547,5 +643,29 @@ struct RoundedCornerShape: Shape {
 
         path.closeSubpath()
         return path
+    }
+}
+
+/// Compact battery gauge badge for AirPods / TWS components.
+private struct BatteryBadge: View {
+    let label: String
+    let percentage: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white.opacity(0.6))
+            Image(systemName: percentage > 20 ? "battery.75" : "battery.25")
+                .font(.system(size: 10))
+                .foregroundColor(percentage > 20 ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusRed)
+            Text("\(percentage)%")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(6)
     }
 }

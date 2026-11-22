@@ -345,6 +345,24 @@ public struct CaptureDetailView: View {
                     Toggle("Microphone Voice", isOn: $microphoneEnabled)
                         .toggleStyle(.switch)
                         .font(.system(size: 12))
+                        .onChange(of: microphoneEnabled) { _, isEnabled in
+                            if isEnabled {
+                                MicrophoneLevelMonitor.shared.startMonitoring()
+                            } else {
+                                MicrophoneLevelMonitor.shared.stopMonitoring()
+                            }
+                        }
+                }
+
+                // Live microphone voice preview when mic is enabled
+                if microphoneEnabled {
+                    MicrophoneLivePreviewView()
+                        .onAppear {
+                            MicrophoneLevelMonitor.shared.startMonitoring()
+                        }
+                        .onDisappear {
+                            MicrophoneLevelMonitor.shared.stopMonitoring()
+                        }
                 }
             }
 
@@ -404,6 +422,80 @@ public struct CaptureDetailView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+            }
+
+            // Recent Recording Preview Card
+            if let lastVideoURL = appState.lastRecordedVideoURL {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "video.fill")
+                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                        Text("Recent Recording Preview")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        Text(lastVideoURL.lastPathComponent)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(alignment: .center, spacing: 14) {
+                        // Video Thumbnail or Placeholder
+                        if let thumb = appState.lastRecordedVideoThumbnail {
+                            Image(decorative: thumb, scale: 2.0, orientation: .up)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: 160, maxHeight: 100)
+                                .cornerRadius(6)
+                                .overlay(
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                                        Image(systemName: "play.circle.fill")
+                                            .font(.system(size: 26))
+                                            .foregroundColor(.white.opacity(0.9))
+                                    }
+                                )
+                        } else {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.black.opacity(0.85))
+                                    .frame(width: 140, height: 90)
+                                Image(systemName: "play.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Screen recording saved to disk ready to play or reveal.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+
+                            HStack(spacing: 8) {
+                                Button("Play Video") {
+                                    NSWorkspace.shared.open(lastVideoURL)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(MaczyDesignTokens.brandPurple)
+                                .controlSize(.small)
+
+                                Button("Reveal in Finder") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([lastVideoURL])
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.7))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MaczyDesignTokens.brandPurple.opacity(0.3), lineWidth: 1)
+                )
             }
 
             Divider()
@@ -551,5 +643,73 @@ struct ShortcutBadge: View {
             .padding(.vertical, 2)
             .background(Color.primary.opacity(0.08))
             .cornerRadius(4)
+    }
+}
+
+struct MicrophoneLivePreviewView: View {
+    @ObservedObject private var monitor = MicrophoneLevelMonitor.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "mic.fill")
+                    .foregroundColor(monitor.audioLevel > 0.05 ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.brandPurple)
+                    .font(.system(size: 13))
+
+                Text("Microphone Voice Preview")
+                    .font(.system(size: 12, weight: .semibold))
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(monitor.audioLevel > 0.05 ? MaczyDesignTokens.statusGreen : Color.secondary.opacity(0.4))
+                        .frame(width: 7, height: 7)
+                    Text(monitor.audioLevel > 0.05 ? "Voice Detected" : "Listening...")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(monitor.audioLevel > 0.05 ? MaczyDesignTokens.statusGreen : .secondary)
+                }
+            }
+
+            // Real-time audio level visualizer bar
+            GeometryReader { geo in
+                let totalWidth = geo.size.width
+                let barCount = 24
+                let spacing: CGFloat = 3
+                let barWidth = max(2, (totalWidth - CGFloat(barCount - 1) * spacing) / CGFloat(barCount))
+                let activeCount = Int(monitor.audioLevel * Float(barCount))
+
+                HStack(spacing: spacing) {
+                    ForEach(0..<barCount, id: \.self) { idx in
+                        let isActive = idx <= activeCount
+                        let color: Color = idx < 16 ? MaczyDesignTokens.statusGreen : (idx < 20 ? MaczyDesignTokens.statusOrange : MaczyDesignTokens.statusRed)
+
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(isActive ? color : Color.secondary.opacity(0.18))
+                            .frame(width: barWidth, height: isActive ? 14 : 8)
+                            .animation(.easeOut(duration: 0.08), value: monitor.audioLevel)
+                    }
+                }
+                .frame(height: 14, alignment: .center)
+            }
+            .frame(height: 14)
+
+            HStack {
+                Text(monitor.deviceName)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("Level: \(Int(monitor.audioLevel * 100))%")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.7))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(MaczyDesignTokens.brandPurple.opacity(0.25), lineWidth: 1)
+        )
     }
 }

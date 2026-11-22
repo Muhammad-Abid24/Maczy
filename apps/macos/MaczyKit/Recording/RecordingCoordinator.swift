@@ -58,6 +58,8 @@ public final class RecordingCoordinator: NSObject, AreaSelectionOverlayDelegate 
                 let savedURL = try await ScreenRecordingEngine.shared.stopRecording()
                 self.activeOutputURL = nil
                 self.currentRecordedURL = savedURL
+                // Present floating recording preview HUD
+                RecordingPreviewHUD.shared.present(videoURL: savedURL)
                 completion?(.success(savedURL))
             } catch {
                 self.activeOutputURL = nil

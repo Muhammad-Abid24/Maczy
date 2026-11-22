@@ -25,6 +25,8 @@ public final class AppState: ObservableObject {
 
     @Published public var permissions: [MaczyPermission: PermissionState] = [:]
     @Published public var lastCapturedImage: CGImage?
+    @Published public var lastRecordedVideoURL: URL?
+    @Published public var lastRecordedVideoThumbnail: CGImage?
     private var explicitlySetPermissions: Set<MaczyPermission> = []
     private var lastDispatchedActions: [String: Date] = [:]
     public var debounceInterval: TimeInterval
@@ -254,6 +256,8 @@ public final class AppState: ObservableObject {
                 Task { @MainActor in
                     switch res {
                     case .success(let url):
+                        self?.lastRecordedVideoURL = url
+                        self?.lastRecordedVideoThumbnail = RecordingPreviewHUD.generateVideoThumbnail(for: url)
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: "Saved: \(url.lastPathComponent)")
                     case .failure(let err):
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: err.localizedDescription)

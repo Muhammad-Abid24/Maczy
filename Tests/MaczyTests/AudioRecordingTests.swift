@@ -121,4 +121,27 @@ final class AudioRecordingTests: XCTestCase {
         XCTAssertEqual(res.errorCode, "PERMISSION_REQUIRED")
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .idle)
     }
+
+    @MainActor
+    func testMicrophoneLevelMonitorLifecycleAndMocking() {
+        let monitor = MicrophoneLevelMonitor.shared
+
+        XCTAssertFalse(monitor.isMonitoring)
+        XCTAssertEqual(monitor.audioLevel, 0.0)
+
+        // Set mock level
+        monitor.mockAudioLevel = 0.65
+        XCTAssertEqual(monitor.audioLevel, 0.65)
+
+        monitor.startMonitoring()
+        XCTAssertTrue(monitor.isMonitoring)
+
+        monitor.mockAudioLevel = 0.85
+        XCTAssertEqual(monitor.audioLevel, 0.85)
+
+        monitor.stopMonitoring()
+        XCTAssertFalse(monitor.isMonitoring)
+        monitor.mockAudioLevel = nil
+        XCTAssertEqual(monitor.audioLevel, 0.0)
+    }
 }

@@ -384,6 +384,13 @@ public struct CaptureDetailView: View {
 
                 Spacer()
 
+                Button("Confirm Allowed") {
+                    appState.markPermissionGranted(.screenRecording)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(MaczyDesignTokens.statusGreen)
+                .controlSize(.small)
+
                 Button("Request Access") {
                     Task {
                         _ = await PermissionManager.shared.requestAuthorization(for: .screenRecording)
@@ -392,8 +399,7 @@ public struct CaptureDetailView: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(MaczyDesignTokens.brandPurple)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
 
                 Button("Open Settings") {

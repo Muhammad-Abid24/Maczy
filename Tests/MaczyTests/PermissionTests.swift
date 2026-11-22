@@ -95,4 +95,16 @@ final class PermissionTests: XCTestCase {
         let state = await manager.requestAuthorization(for: .screenRecording)
         XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(state))
     }
+
+    func testMarkPermissionGrantedUpdatesStateAndNotification() {
+        let appState = AppState()
+        XCTAssertEqual(appState.permissionState(.screenRecording), .notDetermined)
+
+        appState.markPermissionGranted(.screenRecording)
+        XCTAssertEqual(appState.permissionState(.screenRecording), .granted)
+
+        // Calling refreshPermissions should not demote a granted permission
+        appState.refreshPermissions()
+        XCTAssertEqual(appState.permissionState(.screenRecording), .granted)
+    }
 }

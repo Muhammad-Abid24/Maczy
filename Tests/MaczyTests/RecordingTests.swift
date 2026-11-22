@@ -84,4 +84,31 @@ final class RecordingTests: XCTestCase {
         XCTAssertTrue(stopResult.ok)
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .idle)
     }
+
+    func testRecordingPreviewHUDPresentationAndDismiss() {
+        let hud = RecordingPreviewHUD.shared
+        let dummyURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_preview.mp4")
+
+        hud.present(videoURL: dummyURL)
+        XCTAssertTrue(hud.isVisible)
+        XCTAssertEqual(hud.level, NSWindow.Level(Int(CGWindowLevelForKey(.maximumWindow))))
+
+        hud.dismiss()
+    }
+
+    func testVideoThumbnailGenerationGracefulFallback() {
+        let dummyURL = FileManager.default.temporaryDirectory.appendingPathComponent("non_existent_file.mp4")
+        let thumb = RecordingPreviewHUD.generateVideoThumbnail(for: dummyURL)
+        XCTAssertNil(thumb)
+    }
+
+    func testAppStateLastRecordedVideoURLPublishing() {
+        let appState = AppState()
+        XCTAssertNil(appState.lastRecordedVideoURL)
+        XCTAssertNil(appState.lastRecordedVideoThumbnail)
+
+        let testURL = URL(fileURLWithPath: "/tmp/sample.mp4")
+        appState.lastRecordedVideoURL = testURL
+        XCTAssertEqual(appState.lastRecordedVideoURL, testURL)
+    }
 }

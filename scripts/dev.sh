@@ -54,6 +54,8 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <string>Maczy requires Camera access for smart unlock feasibility checks.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Maczy requires Apple Events permission to interact with system windows.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Maczy uses Bluetooth to observe connected AirPods and wireless devices for the Dynamic Notch.</string>
 </dict>
 </plist>
 EOF

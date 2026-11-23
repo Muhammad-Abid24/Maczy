@@ -56,6 +56,9 @@ public struct PermissionCenterView: View {
                         },
                         onOpenSettings: {
                             PermissionManager.shared.openSettings(for: perm)
+                        },
+                        onConfirmGranted: {
+                            appState.markPermissionGranted(perm)
                         }
                     )
                 }
@@ -79,6 +82,7 @@ struct PermissionCard: View {
     let state: PermissionState
     let onGrant: () -> Void
     let onOpenSettings: () -> Void
+    let onConfirmGranted: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -131,7 +135,7 @@ struct PermissionCard: View {
                         Text("Authorization active")
                             .font(.system(size: 11))
                             .foregroundColor(MaczyDesignTokens.statusGreen)
-                    } else if state == .denied || state == .restricted {
+                    } else {
                         Button("Request Access") {
                             onGrant()
                         }
@@ -145,22 +149,11 @@ struct PermissionCard: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
 
-                        Text("If removed, click '+' in System Settings and add Maczy from Applications.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    } else {
-                        Button("Request Access") {
-                            onGrant()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(MaczyDesignTokens.brandPurple)
-
-                        Button("Settings") {
-                            onOpenSettings()
+                        Button("Confirm Granted") {
+                            onConfirmGranted()
                         }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(MaczyDesignTokens.brandPurple)
                     }
                 }

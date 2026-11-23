@@ -4,6 +4,63 @@ import AVFoundation
 import CoreGraphics
 import ApplicationServices
 import ScreenCaptureKit
+import CoreBluetooth
+import UserNotifications
+
+/// Helper class for requesting Bluetooth authorization via CBCentralManager.
+final class BluetoothPermissionRequester: NSObject, CBCentralManagerDelegate, @unchecked Sendable {
+    static var activeRequesters: [BluetoothPermissionRequester] = []
+    private var central: CBCentralManager?
+    private var continuation: CheckedContinuation<PermissionState, Never>?
+
+    init(continuation: CheckedContinuation<PermissionState, Never>) {
+        self.continuation = continuation
+        super.init()
+    }
+
+    func start() {
+        self.central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionShowPowerAlertKey: true])
+        // Timeout safeguard for headless CI or delayed delegate execution
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self, let cont = self.continuation else { return }
+            self.continuation = nil
+            Self.activeRequesters.removeAll { $0 === self }
+            let state: PermissionState
+            switch CBCentralManager.authorization {
+            case .allowedAlways:
+                state = .granted
+            case .denied:
+                state = .denied
+            case .restricted:
+                state = .restricted
+            case .notDetermined:
+                state = .notDetermined
+            @unknown default:
+                state = .notDetermined
+            }
+            cont.resume(returning: state)
+        }
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        let state: PermissionState
+        switch CBCentralManager.authorization {
+        case .allowedAlways:
+            state = .granted
+        case .denied:
+            state = .denied
+        case .restricted:
+            state = .restricted
+        case .notDetermined:
+            state = .notDetermined
+        @unknown default:
+            state = .notDetermined
+        }
+        continuation?.resume(returning: state)
+        continuation = nil
+        Self.activeRequesters.removeAll { $0 === self }
+    }
+}
 
 /// Manages macOS TCC system permission checks, explicit requests, and settings deep linking.
 public final class PermissionManager: @unchecked Sendable {
@@ -33,9 +90,21 @@ public final class PermissionManager: @unchecked Sendable {
         return URL(string: urlString)
     }
 
+    /// Validates whether running in a headless test or automated CI environment
+    public var isHeadlessOrCI: Bool {
+        if ProcessInfo.processInfo.environment["CI"] != nil ||
+           ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil ||
+           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+           NSClassFromString("XCTestCase") != nil {
+            return true
+        }
+        return false
+    }
+
     /// Opens System Settings directly to the corresponding privacy pane.
     @MainActor
     public func openSettings(for permission: MaczyPermission) {
+        guard !isHeadlessOrCI else { return }
         if let url = settingsURL(for: permission) {
             NSWorkspace.shared.open(url)
         }
@@ -91,13 +160,84 @@ public final class PermissionManager: @unchecked Sendable {
         case .accessibility:
             return AXIsProcessTrusted() ? .granted : .notDetermined
 
-        case .bluetooth, .notifications, .fullDiskAccess:
+        case .bluetooth:
+            switch CBCentralManager.authorization {
+            case .allowedAlways: return .granted
+            case .denied: return .denied
+            case .restricted: return .restricted
+            case .notDetermined: return .notDetermined
+            @unknown default: return .notDetermined
+            }
+
+        case .notifications:
+            return checkNotificationStatus()
+
+        case .fullDiskAccess:
+            return checkFullDiskAccess()
+        }
+    }
+
+    /// Validates whether UNUserNotificationCenter can be safely used without throwing NSInternalInconsistencyException
+    private var isNotificationCenterAvailable: Bool {
+        if NSClassFromString("XCTestCase") != nil || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+        guard let bundleId = Bundle.main.bundleIdentifier, !bundleId.isEmpty else {
+            return false
+        }
+        return Bundle.main.bundleURL.pathExtension.lowercased() == "app"
+    }
+
+    /// Checks UserNotifications authorization status synchronously.
+    private func checkNotificationStatus() -> PermissionState {
+        guard isNotificationCenterAvailable else {
             return .notDetermined
         }
+        let sema = DispatchSemaphore(value: 0)
+        var result: PermissionState = .notDetermined
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional:
+                result = .granted
+            case .denied:
+                result = .denied
+            case .notDetermined:
+                result = .notDetermined
+            case .ephemeral:
+                result = .granted
+            @unknown default:
+                result = .notDetermined
+            }
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + 0.3)
+        return result
+    }
+
+    /// Tests readable access to system-protected user directories requiring Full Disk Access.
+    public func checkFullDiskAccess() -> PermissionState {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let testPaths = [
+            home.appendingPathComponent("Library/Safari").path,
+            home.appendingPathComponent("Library/Suggestions").path,
+            home.appendingPathComponent("Library/Mail").path
+        ]
+
+        for path in testPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                if FileManager.default.isReadableFile(atPath: path) {
+                    return .granted
+                }
+            }
+        }
+        return .notDetermined
     }
 
     /// Requests authorization explicitly for the given permission.
     public func requestAuthorization(for permission: MaczyPermission) async -> PermissionState {
+        if isHeadlessOrCI {
+            return checkStatus(for: permission)
+        }
         switch permission {
         case .screenRecording:
             if #available(macOS 10.15, *) {
@@ -118,26 +258,98 @@ public final class PermissionManager: @unchecked Sendable {
                     return .granted
                 }
 
-                // Return notDetermined rather than denied, because user must toggle it in System Settings
+                await MainActor.run {
+                    openSettings(for: .screenRecording)
+                }
                 return .notDetermined
             }
             return .granted
 
         case .camera:
             let granted = await AVCaptureDevice.requestAccess(for: .video)
-            return granted ? .granted : .denied
+            if !granted {
+                await MainActor.run {
+                    openSettings(for: .camera)
+                }
+                return .denied
+            }
+            return .granted
 
         case .microphone:
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
-            return granted ? .granted : .denied
+            if !granted {
+                await MainActor.run {
+                    openSettings(for: .microphone)
+                }
+                return .denied
+            }
+            return .granted
 
         case .accessibility:
+            if AXIsProcessTrusted() {
+                return .granted
+            }
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
             let granted = AXIsProcessTrustedWithOptions(options)
+            if !granted {
+                await MainActor.run {
+                    openSettings(for: .accessibility)
+                }
+            }
             return granted ? .granted : .notDetermined
 
-        case .bluetooth, .notifications, .fullDiskAccess:
-            return .notDetermined
+        case .bluetooth:
+            let current = checkStatus(for: .bluetooth)
+            if current == .granted {
+                return .granted
+            }
+            if current == .denied || current == .restricted {
+                await MainActor.run {
+                    openSettings(for: .bluetooth)
+                }
+                return current
+            }
+            let state = await withCheckedContinuation { continuation in
+                let requester = BluetoothPermissionRequester(continuation: continuation)
+                BluetoothPermissionRequester.activeRequesters.append(requester)
+                requester.start()
+            }
+            if state != .granted {
+                await MainActor.run {
+                    openSettings(for: .bluetooth)
+                }
+            }
+            return state
+
+        case .notifications:
+            guard isNotificationCenterAvailable else {
+                return .notDetermined
+            }
+            do {
+                let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+                if !granted {
+                    await MainActor.run {
+                        openSettings(for: .notifications)
+                    }
+                    return .denied
+                }
+                return .granted
+            } catch {
+                await MainActor.run {
+                    openSettings(for: .notifications)
+                }
+                return .denied
+            }
+
+        case .fullDiskAccess:
+            let current = checkFullDiskAccess()
+            if current == .granted {
+                return .granted
+            }
+            await MainActor.run {
+                openSettings(for: .fullDiskAccess)
+            }
+            return current
         }
     }
 

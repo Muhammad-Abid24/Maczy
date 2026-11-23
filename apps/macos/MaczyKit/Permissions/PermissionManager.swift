@@ -90,9 +90,21 @@ public final class PermissionManager: @unchecked Sendable {
         return URL(string: urlString)
     }
 
+    /// Validates whether running in a headless test or automated CI environment
+    public var isHeadlessOrCI: Bool {
+        if ProcessInfo.processInfo.environment["CI"] != nil ||
+           ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil ||
+           ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+           NSClassFromString("XCTestCase") != nil {
+            return true
+        }
+        return false
+    }
+
     /// Opens System Settings directly to the corresponding privacy pane.
     @MainActor
     public func openSettings(for permission: MaczyPermission) {
+        guard !isHeadlessOrCI else { return }
         if let url = settingsURL(for: permission) {
             NSWorkspace.shared.open(url)
         }
@@ -223,6 +235,9 @@ public final class PermissionManager: @unchecked Sendable {
 
     /// Requests authorization explicitly for the given permission.
     public func requestAuthorization(for permission: MaczyPermission) async -> PermissionState {
+        if isHeadlessOrCI {
+            return checkStatus(for: permission)
+        }
         switch permission {
         case .screenRecording:
             if #available(macOS 10.15, *) {

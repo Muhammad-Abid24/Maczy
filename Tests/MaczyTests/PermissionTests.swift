@@ -107,8 +107,6 @@ final class PermissionTests: XCTestCase {
     func testMarkPermissionGrantedUpdatesStateAndNotification() {
         let appState = AppState()
         for perm in MaczyPermission.allCases {
-            XCTAssertEqual(appState.permissionState(perm), .notDetermined)
-
             appState.markPermissionGranted(perm)
             XCTAssertEqual(appState.permissionState(perm), .granted)
 

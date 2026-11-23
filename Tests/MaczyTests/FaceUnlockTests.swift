@@ -144,4 +144,38 @@ final class FaceUnlockTests: XCTestCase {
         let view = UnlockDetailView(appState: appState)
         XCTAssertNotNil(view.body)
     }
+
+    func testLiveLandmarkProcessingAndSimilarityMatching() {
+        let manager = FaceUnlockManager.shared
+
+        // Enroll with sample landmarks
+        let samplePts = [
+            BiometricTemplate.NormalizedPoint(x: 0.35, y: 0.45),
+            BiometricTemplate.NormalizedPoint(x: 0.65, y: 0.45),
+            BiometricTemplate.NormalizedPoint(x: 0.50, y: 0.60)
+        ]
+        _ = manager.enrollFace(qualityScore: 0.88, landmarkPoints: samplePts)
+
+        // Process matching live frame
+        manager.processLiveFrame(
+            quality: 0.85,
+            bounds: CGRect(x: 0.2, y: 0.2, width: 0.6, height: 0.6),
+            yaw: 0.05,
+            pitch: 0.02,
+            isBlinking: true,
+            hasMotion: true,
+            landmarks: samplePts
+        )
+
+        XCTAssertEqual(manager.liveQualityScore, 0.85)
+        XCTAssertTrue(manager.eyeBlinkDetected)
+        XCTAssertTrue(manager.headMotionDetected)
+        XCTAssertNotNil(manager.liveMatchSimilarity)
+        XCTAssertTrue((manager.liveMatchSimilarity ?? 0) >= 0.72)
+    }
+
+    func testCameraPreviewViewInstantiates() {
+        let view = CameraPreviewView(session: nil)
+        XCTAssertNotNil(view)
+    }
 }

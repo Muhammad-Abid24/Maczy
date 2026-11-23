@@ -37,9 +37,9 @@ public struct UnlockDetailView: View {
                 }
 
                 // Section 1: Face Unlock Enrollment & Anti-Spoof Audit (MZ-024)
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Text("Face Unlock Enrollment & Anti-Spoof Audit (MZ-024)")
+                        Text("Face Unlock — Live Camera & Anti-Spoof Engine (MZ-024)")
                             .font(.system(size: 13, weight: .bold))
                         Spacer()
                         Text(faceManager.enrollmentState.displayTitle)
@@ -51,68 +51,146 @@ public struct UnlockDetailView: View {
                             .cornerRadius(4)
                     }
 
-                    // Enrollment Card
+                    // Live Camera Viewport & Vision HUD
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: faceManager.enrollmentState.isEnrolled ? "faceid" : "person.crop.circle.badge.plus")
-                                .font(.system(size: 24))
-                                .foregroundColor(faceManager.enrollmentState.isEnrolled ? MaczyDesignTokens.brandPurple : .secondary)
-                                .frame(width: 32)
+                        ZStack(alignment: .bottomLeading) {
+                            if faceManager.isCameraActive {
+                                CameraPreviewView(session: faceManager.captureEngine.captureSession)
+                                    .frame(height: 180)
+                                    .cornerRadius(8)
+                                    .clipped()
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("On-Device Biometric Template")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text(faceManager.enrollmentState.isEnrolled
-                                     ? "Mathematical feature vector registered locally. Zero plaintext credentials, zero cloud processing."
-                                     : "No biometric template enrolled. Enroll face locally with liveness verification.")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
+                                // HUD Overlay on Camera Feed
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(faceManager.liveLivenessStatus)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(Color.black.opacity(0.65))
+                                            .cornerRadius(4)
 
-                                if let template = faceManager.storedTemplate {
-                                    Text("Template ID: \(template.id.prefix(8))... | Quality: \(Int(template.qualityScore * 100))%")
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(.secondary)
+                                        Spacer()
+
+                                        if faceManager.liveQualityScore > 0 {
+                                            Text("Quality: \(Int(faceManager.liveQualityScore * 100))%")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(faceManager.liveQualityScore >= 0.5 ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 3)
+                                                .background(Color.black.opacity(0.65))
+                                                .cornerRadius(4)
+                                        }
+
+                                        if let sim = faceManager.liveMatchSimilarity {
+                                            Text("\(Int(sim * 100))% Match")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(sim >= 0.72 ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusRed)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 3)
+                                                .background(Color.black.opacity(0.65))
+                                                .cornerRadius(4)
+                                        }
+                                    }
+
+                                    HStack(spacing: 6) {
+                                        Text(faceManager.eyeBlinkDetected ? "Eye Blink: ✓" : "Eye Blink: waiting...")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(faceManager.eyeBlinkDetected ? MaczyDesignTokens.statusGreen : .white.opacity(0.8))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.black.opacity(0.55))
+                                            .cornerRadius(4)
+
+                                        Text(faceManager.headMotionDetected ? "Head Motion: ✓" : "Head Motion: waiting...")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(faceManager.headMotionDetected ? MaczyDesignTokens.statusGreen : .white.opacity(0.8))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.black.opacity(0.55))
+                                            .cornerRadius(4)
+                                    }
                                 }
-
-                                HStack(spacing: 8) {
-                                    if !faceManager.enrollmentState.isEnrolled {
-                                        Button("Enroll Face (Vision Liveness)") {
-                                            let res = faceManager.enrollFace()
-                                            switch res {
-                                            case .success(let tmpl):
-                                                enrollmentMessage = "Enrolled template \(tmpl.id.prefix(8)) successfully."
-                                            case .failure(let err):
-                                                enrollmentMessage = "Enrollment failed: \(err)"
-                                            }
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .tint(MaczyDesignTokens.brandPurple)
-                                        .controlSize(.small)
-                                    } else {
-                                        Button("Revoke Template") {
-                                            faceManager.revokeEnrollment()
-                                            enrollmentMessage = "Biometric template destroyed."
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
+                                .padding(8)
+                            } else {
+                                ZStack {
+                                    Color.black.opacity(0.85)
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 28))
+                                            .foregroundColor(.secondary)
+                                        Text("Camera Inactive")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.white)
+                                        Text("Click 'Start Live Camera' to begin real-time Vision face detection & enrollment.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
                                     }
+                                }
+                                .frame(height: 180)
+                                .cornerRadius(8)
+                            }
+                        }
 
-                                    Button("Test Locked-Session Unlock") {
-                                        lastUnlockResult = faceManager.attemptLockedSessionUnlock()
-                                        _ = appState.dispatch(.triggerSessionUnlock)
+                        // Camera Controls & Enrollment Progress
+                        if case .enrolling(let progress) = faceManager.enrollmentState {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Enrolling Face Features...")
+                                        .font(.system(size: 11, weight: .semibold))
+                                    Spacer()
+                                    Text("\(Int(progress * 100))%")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                ProgressView(value: progress, total: 1.0)
+                                    .tint(MaczyDesignTokens.brandPurple)
+                            }
+                            .padding(.vertical, 4)
+                        }
+
+                        HStack(spacing: 8) {
+                            if !faceManager.isCameraActive {
+                                Button("Start Live Camera") {
+                                    Task {
+                                        await faceManager.startCamera()
                                     }
-                                    .buttonStyle(.bordered)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(MaczyDesignTokens.brandPurple)
+                                .controlSize(.small)
+                            } else {
+                                Button("Stop Camera") {
+                                    faceManager.stopCamera()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                if !faceManager.enrollmentState.isEnrolled {
+                                    Button("Enroll Face (Vision)") {
+                                        faceManager.beginLiveEnrollment()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(MaczyDesignTokens.brandPurple)
                                     .controlSize(.small)
                                 }
-                                .padding(.top, 4)
-
-                                if let msg = enrollmentMessage {
-                                    Text(msg)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(MaczyDesignTokens.brandPurple)
-                                        .padding(.top, 2)
-                                }
                             }
+
+                            if faceManager.enrollmentState.isEnrolled {
+                                Button("Revoke Template") {
+                                    faceManager.revokeEnrollment()
+                                    enrollmentMessage = "Biometric template destroyed."
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+
+                            Button("Test Locked-Session Unlock") {
+                                lastUnlockResult = faceManager.attemptLockedSessionUnlock()
+                                _ = appState.dispatch(.triggerSessionUnlock)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
                     }
                     .padding(12)

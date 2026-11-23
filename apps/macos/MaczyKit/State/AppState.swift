@@ -151,13 +151,16 @@ public final class AppState: ObservableObject {
     }
 
     public func setPermissionState(_ permission: MaczyPermission, state: PermissionState) {
-        explicitlySetPermissions.insert(permission)
+        if state == .granted {
+            explicitlySetPermissions.insert(permission)
+        }
         permissions[permission] = state
     }
 
     /// User confirmation that permission has been toggled in System Settings
     public func markPermissionGranted(_ permission: MaczyPermission) {
-        setPermissionState(permission, state: .granted)
+        explicitlySetPermissions.insert(permission)
+        permissions[permission] = .granted
     }
 
     public func permissionState(_ permission: MaczyPermission) -> PermissionState {
@@ -167,9 +170,13 @@ public final class AppState: ObservableObject {
     /// Queries system TCC status via PermissionManager and updates published permission states.
     public func refreshPermissions() {
         for perm in MaczyPermission.allCases {
-            guard !explicitlySetPermissions.contains(perm) else { continue }
             let status = PermissionManager.shared.checkStatus(for: perm)
-            permissions[perm] = status
+            if status == .granted {
+                permissions[perm] = .granted
+                explicitlySetPermissions.insert(perm)
+            } else if !explicitlySetPermissions.contains(perm) {
+                permissions[perm] = status
+            }
         }
     }
 

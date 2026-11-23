@@ -92,19 +92,29 @@ final class PermissionTests: XCTestCase {
 
     func testRequestAuthorizationNonThrowing() async {
         let manager = PermissionManager.shared
-        let state = await manager.requestAuthorization(for: .screenRecording)
-        XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(state))
+        for perm in MaczyPermission.allCases {
+            let state = await manager.requestAuthorization(for: perm)
+            XCTAssertTrue([PermissionState.granted, .denied, .restricted, .notDetermined].contains(state), "Failed valid state for \(perm)")
+        }
+    }
+
+    func testCheckFullDiskAccessReturnsValidState() {
+        let manager = PermissionManager.shared
+        let state = manager.checkFullDiskAccess()
+        XCTAssertTrue([PermissionState.granted, .notDetermined].contains(state))
     }
 
     func testMarkPermissionGrantedUpdatesStateAndNotification() {
         let appState = AppState()
-        XCTAssertEqual(appState.permissionState(.screenRecording), .notDetermined)
+        for perm in MaczyPermission.allCases {
+            XCTAssertEqual(appState.permissionState(perm), .notDetermined)
 
-        appState.markPermissionGranted(.screenRecording)
-        XCTAssertEqual(appState.permissionState(.screenRecording), .granted)
+            appState.markPermissionGranted(perm)
+            XCTAssertEqual(appState.permissionState(perm), .granted)
 
-        // Calling refreshPermissions should not demote a granted permission
-        appState.refreshPermissions()
-        XCTAssertEqual(appState.permissionState(.screenRecording), .granted)
+            // Calling refreshPermissions should not demote an explicitly granted permission
+            appState.refreshPermissions()
+            XCTAssertEqual(appState.permissionState(perm), .granted)
+        }
     }
 }

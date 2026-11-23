@@ -146,5 +146,112 @@ final class CleanerScanTests: XCTestCase {
         let cancelResult = appState.dispatch(.cancelCleanerScan)
         XCTAssertTrue(cancelResult.ok)
         XCTAssertEqual(appState.status(for: .systemCleaner)?.runtimeState, .idle)
+
+        // MZ-029 Action Gating
+        let purgeUnconfirmed = appState.dispatch(.executeCleanerPurge(confirmed: false))
+        XCTAssertFalse(purgeUnconfirmed.ok)
+        XCTAssertEqual(purgeUnconfirmed.errorCode, "GATE_MZ_029")
+
+        let purgeConfirmed = appState.dispatch(.executeCleanerPurge(confirmed: true))
+        XCTAssertTrue(purgeConfirmed.ok)
+    }
+
+    func testMZ029ExecutionMovesItemsToTrashInDisposableFixture() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("maczy_fixture_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let dummyCache = tempDir.appendingPathComponent("test_cache.dat")
+        try "test-data-payload".write(to: dummyCache, atomically: true, encoding: .utf8)
+
+        let item = CleanerManifestItem(
+            path: dummyCache.path,
+            name: "test_cache.dat",
+            category: .userCaches,
+            fileSizeBytes: 17,
+            isSafeToPurge: true
+        )
+
+        let mockScanner = MockCleanerScannerProvider(cannedItems: [item])
+        let mockExecution = MockCleanupExecutionProvider()
+        let manager = CleanerManager(
+            scanner: mockScanner,
+            executionProvider: mockExecution,
+            initiallyApproved: true
+        )
+
+        manager.startScan()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertNotNil(manager.lastManifest)
+        XCTAssertEqual(manager.lastManifest?.items.count, 1)
+
+        let cleanupResult = try await manager.executeCleanup()
+        XCTAssertTrue(cleanupResult.success)
+        XCTAssertEqual(cleanupResult.trashedPaths, [dummyCache.path])
+        XCTAssertEqual(cleanupResult.totalReclaimedBytes, 17)
+        XCTAssertTrue(mockExecution.trashedURLs.contains(dummyCache))
+        XCTAssertNil(manager.lastManifest) // All items cleaned
+        XCTAssertNotNil(manager.lastCleanupResult)
+    }
+
+    func testMZ029ExecutionStrictlyRejectsProtectedFiles() async throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let protectedGit = CleanerManifestItem(
+            path: "\(home)/Project/.git/config",
+            name: "config",
+            category: .userCaches,
+            fileSizeBytes: 100,
+            isSafeToPurge: true
+        )
+        let protectedDoc = CleanerManifestItem(
+            path: "\(home)/Documents/secret.pdf",
+            name: "secret.pdf",
+            category: .userCaches,
+            fileSizeBytes: 200,
+            isSafeToPurge: true
+        )
+
+        let mockScanner = MockCleanerScannerProvider(cannedItems: [protectedGit, protectedDoc])
+        let mockExecution = MockCleanupExecutionProvider()
+        let manager = CleanerManager(
+            scanner: mockScanner,
+            executionProvider: mockExecution,
+            initiallyApproved: true
+        )
+
+        manager.startScan()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let result = try await manager.executeCleanup()
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.trashedPaths.count, 0)
+        XCTAssertEqual(result.failedPaths.count, 2)
+        XCTAssertEqual(mockExecution.trashedURLs.count, 0)
+    }
+
+    func testAppStateEmptyTrashAction() {
+        let mock = MockCleanerScannerProvider()
+        let manager = CleanerManager(scanner: mock)
+        let appState = AppState(cleanerManager: manager)
+
+        let emptyUnconfirmed = appState.dispatch(.emptyTrash(confirmed: false))
+        XCTAssertFalse(emptyUnconfirmed.ok)
+        XCTAssertEqual(emptyUnconfirmed.errorCode, "GATE_MZ_029")
+
+        let emptyConfirmed = appState.dispatch(.emptyTrash(confirmed: true))
+        XCTAssertTrue(emptyConfirmed.ok)
+    }
+
+    func testCleanerManagerWorkflowReset() {
+        let mock = MockCleanerScannerProvider()
+        let manager = CleanerManager(scanner: mock, initiallyApproved: true)
+
+        manager.resetCleanerWorkflow()
+        XCTAssertNil(manager.lastManifest)
+        XCTAssertNil(manager.lastCleanupResult)
+        XCTAssertFalse(manager.isCleanupApproved)
+        XCTAssertFalse(manager.trashEmptied)
+        XCTAssertNil(manager.trashEmptyMessage)
     }
 }

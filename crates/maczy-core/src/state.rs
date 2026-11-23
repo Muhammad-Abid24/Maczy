@@ -373,6 +373,36 @@ impl AppState {
                 );
                 CommandResult::success("Scan cancelled")
             }
+            Action::ExecuteCleanerPurge { confirmed } => {
+                if *confirmed {
+                    self.transition_runtime(
+                        module_id,
+                        ModuleRuntimeState::Running,
+                        "Cleanup purge executed successfully to Trash".to_string(),
+                    );
+                    CommandResult::success("Cleanup purge executed successfully to Trash")
+                } else {
+                    CommandResult::failure(
+                        "GATE_MZ_029",
+                        "Cleanup deletion execution requires explicit confirmation. Write controls gated.",
+                    )
+                }
+            }
+            Action::EmptyTrash { confirmed } => {
+                if *confirmed {
+                    self.transition_runtime(
+                        module_id,
+                        ModuleRuntimeState::Running,
+                        "Emptying Trash permanently...".to_string(),
+                    );
+                    CommandResult::success("Trash emptied successfully")
+                } else {
+                    CommandResult::failure(
+                        "GATE_MZ_029",
+                        "Emptying Trash requires explicit confirmation. Action gated by MZ-029.",
+                    )
+                }
+            }
         };
 
         // 4. Publish Command Outcome Event

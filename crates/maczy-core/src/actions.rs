@@ -40,6 +40,12 @@ pub enum Action {
     // System Cleaner
     StartCleanerScan,
     CancelCleanerScan,
+    ExecuteCleanerPurge {
+        confirmed: bool,
+    },
+    EmptyTrash {
+        confirmed: bool,
+    },
 }
 
 impl Action {
@@ -59,7 +65,10 @@ impl Action {
 
             Self::StartAwakeSession { .. } | Self::StopAwakeSession => ModuleId::AlwaysOn,
 
-            Self::StartCleanerScan | Self::CancelCleanerScan => ModuleId::SystemCleaner,
+            Self::StartCleanerScan
+            | Self::CancelCleanerScan
+            | Self::ExecuteCleanerPurge { .. }
+            | Self::EmptyTrash { .. } => ModuleId::SystemCleaner,
         }
     }
 }

@@ -90,6 +90,11 @@ public final class NativeCleanerScannerProvider: CleanerScannerProvider, @unchec
                     continue
                 }
 
+                // If candidate directory itself is unreadable or not writable, skip it safely
+                guard fileManager.isReadableFile(atPath: dir.path) else {
+                    continue
+                }
+
                 // Strictly verify exclusion before scanning
                 let exclusion = CleanerExclusions.isProtected(path: dir.path)
                 if exclusion.isProtected {
@@ -105,12 +110,22 @@ public final class NativeCleanerScannerProvider: CleanerScannerProvider, @unchec
                     for fileURL in contents {
                         try Task.checkCancellation()
 
+                        // Check if file is readable and writable by the user process
+                        guard fileManager.isReadableFile(atPath: fileURL.path),
+                              fileManager.isWritableFile(atPath: fileURL.path) else {
+                            continue
+                        }
+
                         let itemExclusion = CleanerExclusions.isProtected(path: fileURL.path)
                         if itemExclusion.isProtected {
                             continue
                         }
 
                         let size = computeSize(url: fileURL, fileManager: fileManager)
+                        guard size > 0 else {
+                            continue
+                        }
+
                         let modDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
 
                         let item = CleanerManifestItem(

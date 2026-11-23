@@ -404,6 +404,49 @@ public final class AppState: ObservableObject {
             cleanerManager.cancelScan()
             transitionRuntime(moduleId: moduleId, to: .idle, message: "Scan cancelled")
             result = CommandResult.success(message: "Scan cancelled")
+
+        case .executeCleanerPurge(let confirmed):
+            if confirmed {
+                cleanerManager.isCleanupApproved = true
+            }
+            let gateCheck = cleanerManager.requestCleanupExecution(isExplicitlyConfirmed: confirmed)
+            if gateCheck.ok {
+                transitionRuntime(moduleId: moduleId, to: .running, message: "Cleaning items to Trash...")
+                Task { @MainActor [weak self] in
+                    do {
+                        let res = try await self?.cleanerManager.executeCleanup()
+                        let msg = res?.message ?? "Cleanup completed"
+                        self?.transitionRuntime(moduleId: moduleId, to: .idle, message: msg)
+                    } catch {
+                        self?.transitionRuntime(moduleId: moduleId, to: .idle, message: error.localizedDescription)
+                    }
+                }
+                result = gateCheck
+            } else {
+                transitionRuntime(moduleId: moduleId, to: .idle, message: gateCheck.message ?? "Cleanup gated by MZ-029")
+                result = gateCheck
+            }
+
+        case .emptyTrash(let confirmed):
+            if confirmed {
+                cleanerManager.isCleanupApproved = true
+            }
+            let gateCheck = cleanerManager.requestCleanupExecution(isExplicitlyConfirmed: confirmed)
+            if gateCheck.ok {
+                transitionRuntime(moduleId: moduleId, to: .running, message: "Emptying Trash permanently...")
+                Task { @MainActor [weak self] in
+                    do {
+                        _ = try await self?.cleanerManager.emptyTrash(isExplicitlyConfirmed: true)
+                        self?.transitionRuntime(moduleId: moduleId, to: .idle, message: "Trash emptied successfully")
+                    } catch {
+                        self?.transitionRuntime(moduleId: moduleId, to: .idle, message: error.localizedDescription)
+                    }
+                }
+                result = gateCheck
+            } else {
+                transitionRuntime(moduleId: moduleId, to: .idle, message: gateCheck.message ?? "Emptying Trash gated by MZ-029")
+                result = gateCheck
+            }
         }
 
         // 4. Publish Event

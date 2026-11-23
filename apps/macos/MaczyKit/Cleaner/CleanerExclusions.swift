@@ -23,7 +23,15 @@ public struct CleanerExclusions: Sendable {
         "1Password",
         "Bitwarden",
         "Keepass",
-        "OpenVPN"
+        "OpenVPN",
+        "CloudKit",
+        "FamilyCircle",
+        "familycircled",
+        "com.apple.containermanagerd",
+        "com.apple.HomeKit",
+        "com.apple.Safari.SafeBrowsing",
+        "com.apple.homed",
+        "com.apple.ap.adprivacyd"
     ]
 
     private static let excludedFileExtensions: Set<String> = [
@@ -80,6 +88,11 @@ public struct CleanerExclusions: Sendable {
         let ext = url.pathExtension.lowercased()
         if excludedFileExtensions.contains(ext) {
             return (true, "Protected database or cryptographic key file (.\(ext))")
+        }
+
+        // 5. Protect files that exist on disk but lack write permissions
+        if FileManager.default.fileExists(atPath: normalized) && !FileManager.default.isWritableFile(atPath: normalized) {
+            return (true, "Protected by system permissions (insufficient access privileges)")
         }
 
         return (false, nil)

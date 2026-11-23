@@ -1,43 +1,35 @@
 # TASK.md — Current Antigravity Task
 
-## Active selection: MZ-029 (DONE) — System Cleaner Button Responsiveness & Cleanup Deletion Execution
-**Objective:** Fix System Cleaner button unresponsiveness, implement safe reversible cleanup execution via macOS Trash, enforce strict protection exclusions, provide explicit user confirmation before deletion, and verify with disposable temporary fixture tests.
+## Active selection: MZ-024 (DONE) — Actual macOS Locked-Session Face Unlock Enrollment, Anti-Spoof Audit & Fail-Closed Gating
+**Objective:** Implement on-device face enrollment and template revocation, anti-spoofing sensor audit (2D RGB vs TrueDepth IR), presentation attack rejection testing, lock state observation via `CGSessionCopyCurrentDictionary`, rate-limiting attempt lockout, and fail-closed security gating under `GATE_MZ_024` preserving native Touch ID, Apple Watch, and user password fallbacks.
 
 ### Completed this task
-- [x] **Switched to Main & Pulled**: Checked out `main` and pulled latest upstream commits (`cf3783b`).
-- [x] **Created New Feature Branch**: Created branch `feat/mz-029-cleaner-deletion-execution` directly off updated `main`.
-- [x] **Fixed System Cleaner Button Responsiveness (`CleanerDetailView.swift`, `CleanerManager.swift`)**:
-  - Bound `@ObservedObject private var cleanerManager`, `@ObservedObject private var uninstallManager`, and `@ObservedObject private var optimizerManager` in `CleanerDetailView`. Previously, observing `AppState` alone failed to propagate `@Published` property changes from nested child managers to SwiftUI views, causing buttons and category toggles to seem unresponsive.
-  - Offloaded file system enumeration and cache scanning to a background cooperative thread pool (`Task.detached(priority: .userInitiated)` with isolated `@Sendable` progress reporting), preventing `@MainActor` thread starvation.
-  - Added `.contentShape(Rectangle())` to tab buttons and category cards for instant, edge-to-edge hit testing.
-- [x] **Implemented Cleanup Deletion Execution (MZ-029)**:
-  - Added `Action::ExecuteCleanerPurge { confirmed: bool }` in Rust core (`crates/maczy-core/src/actions.rs`, `state.rs`, `lib.rs`) with fail-closed gating `GATE_MZ_029` when unconfirmed.
-  - Added `MaczyAction.executeCleanerPurge(confirmed: Bool)` in `MaczyAction.swift` with debounce key `cleaner_purge_\(confirmed)`.
-  - Created `CleanupExecutionProvider` protocol and `NativeCleanupExecutionProvider` in `CleanerManager.swift`:
-    - Safely moves files to macOS Trash using `FileManager.default.trashItem(at:resultingItemURL:)` — **never deletes permanently**.
-    - Re-validates all candidate paths through `CleanerExclusions.isProtected(path)` right before trashing to guarantee `.git`, user documents, photos, desktop items, and protected system files are never touched.
-    - Implemented `MockCleanupExecutionProvider` for deterministic testing.
-  - Created `CleanupResult` struct reporting trashed item count, failed items, reclaimed byte count, and human-readable string.
-  - Added `executeCleanup() async throws -> CleanupResult` and `requestCleanupExecution(isExplicitlyConfirmed:)` with fail-closed `GATE_MZ_029` validation.
-  - Added confirmation review sheet (`cleanupConfirmationSheet`) in `CleanerDetailView` with an itemized category breakdown, total reclaimable size, safety explanation, and clear Cancel / Clean buttons before any mutation occurs.
-  - Added post-cleanup result banner displaying reclaimed space and trashed item counts.
-- [x] **Configured Step 4 as Empty Trash (Menghapus Trash)**:
-  - Updated the 4-step workflow indicator: `Step 1: Scan` -> `Step 2: Review` -> `Step 3: Move to Trash` -> `Step 4: Empty Trash`.
-  - Added `Action::EmptyTrash { confirmed: bool }` in Rust core with fail-closed `GATE_MZ_029` enforcement.
-  - Added `MaczyAction.emptyTrash(confirmed: Bool)` in `MaczyAction.swift` targeting `.systemCleaner`.
-  - Added `emptyTrash() async throws -> Bool`, `openTrashInFinder()`, and `resetCleanerWorkflow()` to `CleanerManager.swift`.
-  - Designed interactive Step 4 Card in `CleanerDetailView.swift`:
-    - Shows items and storage ready to be permanently freed from Trash.
-    - Prominent "Empty Trash Permanently" button triggering native Finder AppleScript and shell cleanup.
-    - "Open Trash in Finder" option allowing user to inspect items before permanent deletion.
-    - "Start New Scan" reset action.
-- [x] **Testing & CI Verification**:
-  - Added tests in `CleanerScanTests.swift`:
-    - `testAppStateCleanerPurgeAction`: verifies unconfirmed fails closed with `GATE_MZ_029` and confirmed succeeds.
-    - `testAppStateEmptyTrashAction`: verifies unconfirmed fails closed with `GATE_MZ_029` and confirmed succeeds.
-    - `testCleanerManagerWorkflowReset`: verifies clean reset back to initial state.
-    - `testMZ029ExecutionMovesItemsToTrashInDisposableFixture`: creates an isolated `FileManager.default.temporaryDirectory` fixture, populates dummy cache files, executes cleanup, and verifies items are moved to trash.
-    - `testMZ029ExecutionStrictlyRejectsProtectedFiles`: verifies `.git` and document paths are skipped and recorded in failed paths without deletion.
-  - Added Rust core tests: `test_cleaner_purge_gated_by_mz_029` and `test_empty_trash_gated_by_mz_029`.
-  - Executed `./scripts/ci.sh`: Rust fmt, clippy (0 warnings), 23 Rust tests, 232 Swift tests pass, Xcode arm64 build, and ad-hoc codesign passed.
-  - Executed `./scripts/dev.sh`: Rebuilt, codesigned, and re-launched `/Users/muhammadabid/Applications/Maczy.app`.
+- [x] **Switched to Main & Pulled**: Checked out `main` and pulled latest upstream commits (`70aa199`).
+- [x] **Created New Feature Branch**: Created branch `feat/mz-024-face-unlock` directly off updated `main`.
+- [x] **Implemented Face Unlock Manager (`FaceUnlockManager.swift`)**:
+  - `FaceEnrollmentState`: Tracks lifecycle (`.notEnrolled`, `.enrolling`, `.enrolled`, `.revoked`).
+  - `BiometricTemplate`: On-device mathematical landmark feature vector hashing (`featureDigest`), quality threshold scoring (>= 0.50), zero plaintext passwords, and zero raw image storage.
+  - `AntiSpoofAuditor`: Hardware audit detecting flat 2D RGB FaceTime HD sensor and lack of TrueDepth IR depth dot matrix on Apple Silicon MacBooks; identifies presentation attack vulnerability (`.critical_2DSensorVulnerable`).
+  - `LivenessChallenge`: Multi-axis variance evaluation (yaw/pitch angles and eye-blink detection) rejecting static photos.
+  - `CGSessionCopyCurrentDictionary`: Real-time session lock state inspection (`CGSSessionScreenIsLocked`).
+  - Rate Limiting: Tracks failed unlock attempts and enforces lockout after 3 consecutive failures (`RATE_LIMITED_LOCKOUT`).
+  - `GATE_MZ_024` Fail-Closed System Unlock Gating: Truthfully evaluates third-party loginwindow dismissal; withholds dangerous root `auth.db` modification or password keystroke injection, preserving native Touch ID, Apple Watch, and account password fallbacks.
+- [x] **Integrated Smart Unlock Lab UI (`UnlockDetailView.swift`)**:
+  - Face Unlock Enrollment card: Status badge, Enroll Face button with Vision liveness validation, Revoke Template button, and template metadata.
+  - Anti-Spoofing & Hardware Sensor Audit card: Sensor architecture readout, risk classification, Real-Time Liveness check, and 2D Photo Presentation Attack simulation.
+  - Locked-Session Unlock Verification: Interactive unlock test button with detailed result banner showing `GATE_MZ_024` fail-closed protection.
+  - Retained all existing MZ-022 native fallback cards (Touch ID, Apple Watch, Account Password) and MZ-023 feasibility matrix.
+- [x] **Created Formal Threat Model (`docs/security/MZ-024-FACE-UNLOCK-THREAT-MODEL.md`)**:
+  - Documented attack vectors (2D Photo, Screen Replay, Synthetic Keystroke, Auth Plugin Bricking, Brute-Force Replay, Credential Exfiltration).
+  - Defined gating flowchart and verified security invariants.
+- [x] **Implemented Comprehensive Unit Tests (`Tests/MaczyTests/FaceUnlockTests.swift`)**:
+  - `testFaceEnrollmentLifecycle`: Enrolls, validates template digest/quality, revokes cleanly.
+  - `testFaceEnrollmentQualityAndLivenessGuards`: Asserts rejection of low quality (< 0.50) and failed liveness challenges.
+  - `testAntiSpoofHardwareAuditAnd2DPhotoAttack`: Confirms 2D sensor limitation detection and presentation attack rejection.
+  - `testSessionUnlockFailsClosedWithGateMZ024`: Verifies `GATE_MZ_024` fail-closed error code, explanation, and native fallback preservation.
+  - `testRateLimitingLockoutAfterThreeFailures`: Asserts lockout after 3 attempts and unlock reset via native auth.
+  - `testSessionLockStateQuery`: Validates `CGSessionCopyCurrentDictionary` query.
+  - `testUnlockDetailViewIntegration`: Verifies SwiftUI view hierarchy binding.
+- [x] **Verification**:
+  - `./scripts/ci.sh` passed: 23 Rust tests passed, 240 Swift tests passed, Xcode build arm64 succeeded, ad-hoc signature verified.
+  - `./scripts/dev.sh` packaged, signed, and launched `/Users/muhammadabid/Applications/Maczy.app`.

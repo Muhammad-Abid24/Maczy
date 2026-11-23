@@ -1,10 +1,14 @@
 import SwiftUI
 
-/// Smart Unlock Screen with Native Fallback Guidance (MZ-022)
-/// and fail-closed security boundary gating (MZ-023).
+/// Smart Unlock Screen with Native Fallback Guidance (MZ-022),
+/// fail-closed security boundary gating (MZ-023), and Face Unlock Enrollment & Anti-Spoof Audit (MZ-024).
 public struct UnlockDetailView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var fallbackManager: NativeUnlockFallbackManager = .shared
+    @ObservedObject var faceManager: FaceUnlockManager = .shared
+
+    @State private var lastUnlockResult: UnlockExecutionResult?
+    @State private var enrollmentMessage: String?
 
     public init(appState: AppState) {
         self.appState = appState
@@ -18,18 +22,172 @@ public struct UnlockDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Smart Unlock — macOS Session Security")
                             .font(.system(size: 18, weight: .bold))
-                        Text("Native OS authentication fallbacks and lock screen security.")
+                        Text("Native OS authentication fallbacks, on-device face enrollment, and anti-spoof audit.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Text("GATED BY MZ-023")
+                    Text("GATED BY MZ-024")
                         .font(.system(size: 10, weight: .bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(MaczyDesignTokens.statusRed.opacity(0.15))
                         .foregroundColor(MaczyDesignTokens.statusRed)
                         .cornerRadius(6)
+                }
+
+                // Section 1: Face Unlock Enrollment & Anti-Spoof Audit (MZ-024)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Face Unlock Enrollment & Anti-Spoof Audit (MZ-024)")
+                            .font(.system(size: 13, weight: .bold))
+                        Spacer()
+                        Text(faceManager.enrollmentState.displayTitle)
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(faceManager.enrollmentState.isEnrolled ? MaczyDesignTokens.statusGreen.opacity(0.15) : Color.secondary.opacity(0.15))
+                            .foregroundColor(faceManager.enrollmentState.isEnrolled ? MaczyDesignTokens.statusGreen : .secondary)
+                            .cornerRadius(4)
+                    }
+
+                    // Enrollment Card
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: faceManager.enrollmentState.isEnrolled ? "faceid" : "person.crop.circle.badge.plus")
+                                .font(.system(size: 24))
+                                .foregroundColor(faceManager.enrollmentState.isEnrolled ? MaczyDesignTokens.brandPurple : .secondary)
+                                .frame(width: 32)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("On-Device Biometric Template")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(faceManager.enrollmentState.isEnrolled
+                                     ? "Mathematical feature vector registered locally. Zero plaintext credentials, zero cloud processing."
+                                     : "No biometric template enrolled. Enroll face locally with liveness verification.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+
+                                if let template = faceManager.storedTemplate {
+                                    Text("Template ID: \(template.id.prefix(8))... | Quality: \(Int(template.qualityScore * 100))%")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                HStack(spacing: 8) {
+                                    if !faceManager.enrollmentState.isEnrolled {
+                                        Button("Enroll Face (Vision Liveness)") {
+                                            let res = faceManager.enrollFace()
+                                            switch res {
+                                            case .success(let tmpl):
+                                                enrollmentMessage = "Enrolled template \(tmpl.id.prefix(8)) successfully."
+                                            case .failure(let err):
+                                                enrollmentMessage = "Enrollment failed: \(err)"
+                                            }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(MaczyDesignTokens.brandPurple)
+                                        .controlSize(.small)
+                                    } else {
+                                        Button("Revoke Template") {
+                                            faceManager.revokeEnrollment()
+                                            enrollmentMessage = "Biometric template destroyed."
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+
+                                    Button("Test Locked-Session Unlock") {
+                                        lastUnlockResult = faceManager.attemptLockedSessionUnlock()
+                                        _ = appState.dispatch(.triggerSessionUnlock)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                                .padding(.top, 4)
+
+                                if let msg = enrollmentMessage {
+                                    Text(msg)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(MaczyDesignTokens.brandPurple)
+                                        .padding(.top, 2)
+                                }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
+
+                    // Anti-Spoof & Hardware Sensor Audit Card
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "camera.metering.matrix")
+                                .font(.system(size: 20))
+                                .foregroundColor(MaczyDesignTokens.statusOrange)
+                                .frame(width: 32)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Sensor Architecture: \(faceManager.lastAudit.sensorType)")
+                                        .font(.system(size: 11, weight: .semibold))
+                                    Spacer()
+                                    Text(faceManager.lastAudit.riskLevel.rawValue)
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(MaczyDesignTokens.statusRed)
+                                }
+
+                                Text(faceManager.lastAudit.auditSummary)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 8) {
+                                    Button("Verify Real-Time Liveness") {
+                                        faceManager.runAntiSpoofAudit(simulatedPhotoAttack: false)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
+                                    Button("Simulate 2D Photo Presentation Attack") {
+                                        faceManager.runAntiSpoofAudit(simulatedPhotoAttack: true)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                                .padding(.top, 2)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(8)
+
+                    // Last Unlock Execution Banner
+                    if let result = lastUnlockResult {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: result.success ? "checkmark.circle.fill" : "shield.lefthalf.filled.trianglebadge.exclamationmark")
+                                .foregroundColor(result.success ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusRed)
+                                .font(.system(size: 16))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(result.errorCode ?? (result.success ? "UNLOCKED" : "LOCKED"))
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundColor(result.success ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusRed)
+                                    Spacer()
+                                    Text("Fallback: \(result.fallbackRecommended)")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                }
+                                Text(result.message)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(10)
+                        .background(result.success ? MaczyDesignTokens.statusGreen.opacity(0.08) : MaczyDesignTokens.statusRed.opacity(0.08))
+                        .cornerRadius(6)
+                    }
                 }
 
                 // Section 1: OS-Managed Native Fallbacks (MZ-022)

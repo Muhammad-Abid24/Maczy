@@ -309,4 +309,41 @@ final class NotchGeometryTests: XCTestCase {
         coordinator.handleNotificationStateChanged(false)
         XCTAssertFalse(coordinator.isNotificationActive)
     }
+
+    func testDynamicNotchShapeWithEarsGeometry() {
+        let testRect = CGRect(x: 0, y: 0, width: 340, height: 80)
+        let shape = DynamicNotchShape(cornerRadius: 22, earRadius: 14, hasEars: true)
+        let path = shape.path(in: testRect)
+
+        let bounds = path.boundingRect
+        XCTAssertEqual(bounds.minX, 0, accuracy: 0.1)
+        XCTAssertEqual(bounds.minY, 0, accuracy: 0.1)
+        XCTAssertEqual(bounds.maxX, 340, accuracy: 0.1)
+        XCTAssertEqual(bounds.maxY, 80, accuracy: 0.1)
+        XCTAssertFalse(path.isEmpty)
+    }
+
+    func testDynamicNotchShapeWithoutEars() {
+        let testRect = CGRect(x: 10, y: 20, width: 200, height: 40)
+        let shape = DynamicNotchShape(cornerRadius: 12, earRadius: 10, hasEars: false)
+        let path = shape.path(in: testRect)
+
+        let bounds = path.boundingRect
+        XCTAssertEqual(bounds.minX, 10, accuracy: 0.1)
+        XCTAssertEqual(bounds.minY, 20, accuracy: 0.1)
+        XCTAssertEqual(bounds.maxX, 210, accuracy: 0.1)
+        XCTAssertEqual(bounds.maxY, 60, accuracy: 0.1)
+        XCTAssertFalse(path.isEmpty)
+    }
+
+    func testDynamicNotchShapeExtremeDimensions() {
+        let narrowRect = CGRect(x: 0, y: 0, width: 20, height: 10)
+        let shape = DynamicNotchShape(cornerRadius: 25, earRadius: 20, hasEars: true)
+        let path = shape.path(in: narrowRect)
+
+        XCTAssertFalse(path.isEmpty)
+        let bounds = path.boundingRect
+        XCTAssertEqual(bounds.width, 20, accuracy: 0.1)
+        XCTAssertEqual(bounds.height, 10, accuracy: 0.1)
+    }
 }

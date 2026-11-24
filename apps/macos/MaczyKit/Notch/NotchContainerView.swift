@@ -162,8 +162,8 @@ public struct NotchContainerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
                 .clipShape(DynamicNotchShape(
-                    cornerRadius: 20,
-                    earRadius: profile.hasPhysicalNotch ? 10 : 0,
+                    cornerRadius: 22,
+                    earRadius: profile.hasPhysicalNotch ? 14 : 0,
                     hasEars: profile.hasPhysicalNotch
                 ))
             } else {
@@ -660,10 +660,10 @@ struct RoundedCornerShape: Shape {
 /// Dynamic Notch Shape supporting native Apple top ear flares and smooth bottom continuous curves.
 public struct DynamicNotchShape: Shape {
     public var cornerRadius: CGFloat = 20
-    public var earRadius: CGFloat = 10
+    public var earRadius: CGFloat = 12
     public var hasEars: Bool = true
 
-    public init(cornerRadius: CGFloat = 20, earRadius: CGFloat = 10, hasEars: Bool = true) {
+    public init(cornerRadius: CGFloat = 20, earRadius: CGFloat = 12, hasEars: Bool = true) {
         self.cornerRadius = cornerRadius
         self.earRadius = earRadius
         self.hasEars = hasEars
@@ -678,43 +678,58 @@ public struct DynamicNotchShape: Shape {
         let bottomY = rect.maxY
         let leftX = rect.minX
         let rightX = rect.maxX
-        let ear = min(earRadius, max(0, (rightX - leftX) / 6))
+        let ear = min(earRadius, max(0, (rightX - leftX) / 6.0))
+        let corner = min(cornerRadius, max(0, (rightX - leftX) / 4.0))
 
-        // Top edge starting at top-left ear
+        // Top-left corner on top bezel
         path.move(to: CGPoint(x: leftX, y: topY))
-        // Flare inward to notch side
-        path.addQuadCurve(
-            to: CGPoint(x: leftX + ear, y: topY + ear),
-            control: CGPoint(x: leftX + ear * 0.3, y: topY)
+
+        // Top-left concave ear flare (starts horizontal at top bezel, curves smoothly into vertical side)
+        path.addArc(
+            center: CGPoint(x: leftX, y: topY + ear),
+            radius: ear,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
         )
+
         // Down left side
-        path.addLine(to: CGPoint(x: leftX + ear, y: bottomY - cornerRadius))
+        path.addLine(to: CGPoint(x: leftX + ear, y: bottomY - corner))
+
         // Bottom-left rounded corner
         path.addArc(
-            center: CGPoint(x: leftX + ear + cornerRadius, y: bottomY - cornerRadius),
-            radius: cornerRadius,
+            center: CGPoint(x: leftX + ear + corner, y: bottomY - corner),
+            radius: corner,
             startAngle: .degrees(180),
             endAngle: .degrees(90),
             clockwise: true
         )
-        // Across bottom
-        path.addLine(to: CGPoint(x: rightX - ear - cornerRadius, y: bottomY))
+
+        // Across bottom edge
+        path.addLine(to: CGPoint(x: rightX - ear - corner, y: bottomY))
+
         // Bottom-right rounded corner
         path.addArc(
-            center: CGPoint(x: rightX - ear - cornerRadius, y: bottomY - cornerRadius),
-            radius: cornerRadius,
+            center: CGPoint(x: rightX - ear - corner, y: bottomY - corner),
+            radius: corner,
             startAngle: .degrees(90),
             endAngle: .degrees(0),
             clockwise: true
         )
+
         // Up right side
         path.addLine(to: CGPoint(x: rightX - ear, y: topY + ear))
-        // Top-right ear flare out
-        path.addQuadCurve(
-            to: CGPoint(x: rightX, y: topY),
-            control: CGPoint(x: rightX - ear * 0.3, y: topY)
+
+        // Top-right concave ear flare (starts vertical from right side, curves smoothly into horizontal top bezel)
+        path.addArc(
+            center: CGPoint(x: rightX, y: topY + ear),
+            radius: ear,
+            startAngle: .degrees(180),
+            endAngle: .degrees(270),
+            clockwise: false
         )
-        // Close across top
+
+        // Across top bezel back to start
         path.addLine(to: CGPoint(x: leftX, y: topY))
         path.closeSubpath()
         return path

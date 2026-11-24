@@ -25,6 +25,7 @@ public final class NotchOverlayWindowController {
     private var hostingView: NotchHostingView<NotchContainerView>?
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
+    private var globalMouseMonitor: Any?
 
     /// Optional callback invoked when a click occurs outside the notch frame.
     public var onOutsideClick: (@MainActor () -> Void)?
@@ -36,6 +37,9 @@ public final class NotchOverlayWindowController {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = localClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = globalMouseMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }
@@ -50,8 +54,10 @@ public final class NotchOverlayWindowController {
         if visible {
             ensurePanelCreated()
             panel?.orderFrontRegardless()
+            startMouseHoverMonitoring()
         } else {
             stopOutsideClickMonitoring()
+            stopMouseHoverMonitoring()
             panel?.orderOut(nil)
         }
     }
@@ -95,7 +101,6 @@ public final class NotchOverlayWindowController {
 
         ensureCanvasSize(for: profile)
         // Refresh tracking rect to match the new state's visible notch area
-        hostingView?.refreshTrackingAreas()
     }
 
     /// Target frame when a notification, volume, or brightness HUD is actively presenting.
@@ -139,7 +144,6 @@ public final class NotchOverlayWindowController {
         ensurePanelCreated()
         stopOutsideClickMonitoring()
         ensureCanvasSize(for: profile)
-        hostingView?.refreshTrackingAreas()
     }
 
     /// Adapts canvas for enlarged notification banner size; SwiftUI GPU spring handles 120 FPS expansion.
@@ -147,7 +151,6 @@ public final class NotchOverlayWindowController {
         ensurePanelCreated()
         stopOutsideClickMonitoring()
         ensureCanvasSize(for: profile)
-        hostingView?.refreshTrackingAreas()
     }
 
     /// Adapts canvas for normal compact size; SwiftUI GPU spring handles 120 FPS collapse.
@@ -155,7 +158,6 @@ public final class NotchOverlayWindowController {
         ensurePanelCreated()
         stopOutsideClickMonitoring()
         ensureCanvasSize(for: profile)
-        hostingView?.refreshTrackingAreas()
         completion?()
     }
 
@@ -163,7 +165,6 @@ public final class NotchOverlayWindowController {
     public func animateToCompactWidth(_ width: CGFloat, profile: NotchScreenProfile) {
         ensurePanelCreated()
         ensureCanvasSize(for: profile)
-        hostingView?.refreshTrackingAreas()
     }
 
     /// Handle simulated or event-based outside click testing. Returns true if outside and collapsed.
@@ -218,6 +219,42 @@ public final class NotchOverlayWindowController {
         if let monitor = localClickMonitor {
             NSEvent.removeMonitor(monitor)
             localClickMonitor = nil
+        }
+    }
+
+    // MARK: - Global Mouse Hover Monitor
+    //
+    // We use a global NSEvent mouseMoved monitor instead of NSTrackingArea because
+    // NSHostingView (SwiftUI) installs its own internal tracking areas covering the
+    // full view bounds. Those internal areas fire mouseEntered for the entire
+    // 520×360 transparent canvas — expanding the notch even when the cursor is far
+    // from the hardware notch cutout. The global monitor reads raw screen coordinates
+    // and compares them against the exact physical notch rect, bypassing all tracking
+    // area interference.
+
+    private func startMouseHoverMonitoring() {
+        guard globalMouseMonitor == nil else { return }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let coordinator = NotchCoordinator.shared
+                let overNotch = self.isMouseOverPanel()
+                if overNotch {
+                    coordinator.cancelScheduledCollapse()
+                    if coordinator.expansionState != .expanded {
+                        coordinator.setExpansionState(.expanded)
+                    }
+                } else if coordinator.expansionState == .expanded {
+                    coordinator.scheduleCollapseIfMouseOutside(delay: 0.25)
+                }
+            }
+        }
+    }
+
+    private func stopMouseHoverMonitoring() {
+        if let monitor = globalMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalMouseMonitor = nil
         }
     }
 
@@ -325,17 +362,12 @@ public final class NotchOverlayWindowController {
     }
 }
 
-/// Custom AppKit hosting view that handles hit-testing and hover detection directly on the active visual notch area.
+/// Custom AppKit hosting view that handles hit-testing directly on the active visual notch area.
 /// Unused canvas space outside the active notch returns nil from hitTest, passing clicks straight through to windows behind.
+/// Mouse hover detection is handled by a global NSEvent monitor in NotchOverlayWindowController,
+/// which reads raw screen coordinates against the physical notch rect — this avoids false triggers
+/// from NSHostingView's own internal SwiftUI tracking areas that cover the full canvas bounds.
 final class NotchHostingView<Content: View>: NSHostingView<Content> {
-    private var trackingArea: NSTrackingArea?
-
-    /// Explicitly rebuild tracking areas now. Called by the window controller after each state transition
-    /// (compact ↔ expanded ↔ audio ↔ notification) so the tracking rect stays in sync with the
-    /// currently-visible notch shape rather than the full transparent canvas.
-    func refreshTrackingAreas() {
-        updateTrackingAreas()
-    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let coordinator = NotchCoordinator.shared
@@ -376,88 +408,5 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
         }
 
         return nil
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let existing = trackingArea {
-            removeTrackingArea(existing)
-        }
-
-        // Build a tight tracking rect that matches the currently-visible notch shape.
-        // Using the full `bounds` (520×360 canvas) would fire mouseEntered for ANY cursor
-        // entry into the transparent overlay area — causing hover-expand even when the
-        // cursor is far from the physical notch cutout.
-        let coordinator = NotchCoordinator.shared
-        let isExpanded = (coordinator.expansionState == .expanded)
-        let isNotification = coordinator.isNotificationActive
-
-        let trackW: CGFloat
-        let trackH: CGFloat
-
-        if isExpanded {
-            trackW = coordinator.activeExpandedWidth
-            trackH = coordinator.activeExpandedHeight
-        } else if isNotification {
-            trackW = coordinator.activeNotificationWidth
-            trackH = coordinator.activeNotificationHeight
-        } else if MediaHUDCoordinator.shared.isAudioActive {
-            // Audio compact with wings
-            trackW = coordinator.activeAudioCompactWidth
-            trackH = coordinator.activeCompactHeight
-        } else {
-            // Compact idle — physical notch silhouette only
-            trackW = coordinator.currentCompactWidth
-            trackH = coordinator.activeCompactHeight
-        }
-
-        // The view is flipped (y=0 at top). Notch sits flush at the top-centre.
-        let viewBounds = self.bounds
-        let trackX = (viewBounds.width - trackW) / 2.0
-        let trackRect = CGRect(x: trackX, y: 0, width: trackW, height: trackH)
-
-        let area = NSTrackingArea(
-            rect: trackRect,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        self.trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        Task { @MainActor in
-            let coordinator = NotchCoordinator.shared
-            if coordinator.isMouseOverNotchPanel() {
-                coordinator.cancelScheduledCollapse()
-                if coordinator.expansionState != .expanded {
-                    coordinator.setExpansionState(.expanded)
-                }
-            }
-        }
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        super.mouseMoved(with: event)
-        Task { @MainActor in
-            let coordinator = NotchCoordinator.shared
-            if coordinator.isMouseOverNotchPanel() {
-                coordinator.cancelScheduledCollapse()
-                if coordinator.expansionState != .expanded {
-                    coordinator.setExpansionState(.expanded)
-                }
-            } else if coordinator.expansionState == .expanded {
-                coordinator.scheduleCollapseIfMouseOutside(delay: 0.25)
-            }
-        }
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        Task { @MainActor in
-            NotchCoordinator.shared.scheduleCollapseIfMouseOutside(delay: 0.15)
-        }
     }
 }

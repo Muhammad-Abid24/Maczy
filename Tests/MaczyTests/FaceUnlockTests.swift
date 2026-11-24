@@ -5,11 +5,13 @@ import XCTest
 final class FaceUnlockTests: XCTestCase {
 
     override func setUp() async throws {
+        SmartUnlockKeychain.shared.deletePassword()
         FaceUnlockManager.shared.revokeEnrollment()
         FaceUnlockManager.shared.resetLockoutAfterNativeAuth()
     }
 
     override func tearDown() async throws {
+        SmartUnlockKeychain.shared.deletePassword()
         FaceUnlockManager.shared.revokeEnrollment()
         FaceUnlockManager.shared.resetLockoutAfterNativeAuth()
     }
@@ -85,15 +87,44 @@ final class FaceUnlockTests: XCTestCase {
         XCTAssertFalse(unEnrolledResult.success)
         XCTAssertEqual(unEnrolledResult.errorCode, "NOT_ENROLLED")
 
-        // Enroll face
+        // Enroll face without keychain password configured
         _ = manager.enrollFace(qualityScore: 0.90)
 
         // Attempt session unlock
         let unlockResult = manager.attemptLockedSessionUnlock()
         XCTAssertFalse(unlockResult.success)
         XCTAssertEqual(unlockResult.errorCode, "GATE_MZ_024")
-        XCTAssertTrue(unlockResult.message.contains("loginwindow dismissal"))
+        XCTAssertTrue(unlockResult.message.contains("requires password"))
         XCTAssertTrue(unlockResult.fallbackRecommended.contains("Touch ID"))
+    }
+
+    func testSmartUnlockKeychainLifecycleAndUnlockSuccess() {
+        let manager = FaceUnlockManager.shared
+        let keychain = SmartUnlockKeychain.shared
+
+        XCTAssertFalse(keychain.hasPassword())
+        XCTAssertNil(keychain.getPassword())
+
+        // Save password
+        let saved = keychain.savePassword("Secr3tP@ssw0rd!")
+        XCTAssertTrue(saved)
+        XCTAssertTrue(keychain.hasPassword())
+        XCTAssertEqual(keychain.getPassword(), "Secr3tP@ssw0rd!")
+
+        // Enroll face
+        _ = manager.enrollFace(qualityScore: 0.90)
+
+        // Attempt unlock with enrolled face and stored password
+        let unlockResult = manager.attemptLockedSessionUnlock()
+        XCTAssertTrue(unlockResult.success)
+        XCTAssertNil(unlockResult.errorCode)
+        XCTAssertTrue(unlockResult.message.contains("Sent unlock sequence"))
+        XCTAssertEqual(unlockResult.fallbackRecommended, "Unlocked")
+
+        // Delete password
+        keychain.deletePassword()
+        XCTAssertFalse(keychain.hasPassword())
+        XCTAssertNil(keychain.getPassword())
     }
 
     func testRateLimitingLockoutAfterThreeFailures() {

@@ -5,6 +5,8 @@ import CoreGraphics
 import LocalAuthentication
 import Vision
 import SwiftUI
+import IOKit.pwr_mgt
+import Security
 
 /// Enrollment lifecycle status for on-device face recognition (MZ-024).
 public enum FaceEnrollmentState: Sendable, Equatable {
@@ -42,6 +44,7 @@ public enum FaceUnlockError: Error, Sendable, Equatable {
     case spoofAttemptDetected
     case alreadyEnrolled
     case rateLimitedLockout
+    case missingPassword
     case systemUnlockGated(code: String, reason: String)
 }
 
@@ -170,6 +173,55 @@ public struct UnlockExecutionResult: Sendable, Equatable {
         self.errorCode = errorCode
         self.message = message
         self.fallbackRecommended = fallbackRecommended
+    }
+}
+
+/// Secure storage of user account unlock credential in the macOS Keychain.
+public final class SmartUnlockKeychain: @unchecked Sendable {
+    public static let shared = SmartUnlockKeychain()
+    private let service = "com.maczy.smartunlock"
+    private var account: String { NSUserName() }
+
+    public func savePassword(_ password: String) -> Bool {
+        guard let data = password.data(using: .utf8) else { return false }
+        deletePassword()
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        return status == errSecSuccess
+    }
+
+    public func getPassword() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    public func hasPassword() -> Bool {
+        return getPassword() != nil
+    }
+
+    public func deletePassword() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
 
@@ -338,9 +390,9 @@ public final class CameraFaceCaptureEngine: NSObject, AVCaptureVideoDataOutputSa
 }
 
 /// Coordinates Face Unlock enrollment, real-time camera capture, anti-spoof liveness audit,
-/// lock state observation, and fail-closed security gating for locked-session unlock (MZ-024).
+/// lock state observation, and automatic lockscreen dismissal when user face matches (MZ-024).
 @MainActor
-public final class FaceUnlockManager: ObservableObject {
+public final class FaceUnlockManager: NSObject, ObservableObject {
     public static let shared = FaceUnlockManager()
 
     /// Maximum consecutive failed attempts allowed before lockout.
@@ -348,6 +400,12 @@ public final class FaceUnlockManager: ObservableObject {
 
     /// Gating error code when system unlock is withheld per ADR-0002.
     public static let gateCode = "GATE_MZ_024"
+
+    @Published public var isSmartUnlockActive: Bool {
+        didSet {
+            UserDefaults.standard.set(isSmartUnlockActive, forKey: "com.maczy.smartunlock.active")
+        }
+    }
 
     @Published public private(set) var isCameraActive: Bool = false
     @Published public private(set) var detectedFaceRect: CGRect?
@@ -367,13 +425,19 @@ public final class FaceUnlockManager: ObservableObject {
 
     public let captureEngine: CameraFaceCaptureEngine
     private var collectedEnrollmentFrames: [[BiometricTemplate.NormalizedPoint]] = []
+    private var autoUnlockTimer: Timer?
+    private var autoUnlockDeadline: Date?
 
-    public init() {
+    public override init() {
+        self.isSmartUnlockActive = UserDefaults.standard.bool(forKey: "com.maczy.smartunlock.active")
         self.lastAudit = AntiSpoofAuditResult.standardMacReport()
         self.isSessionLocked = Self.checkCurrentSessionLocked()
         self.captureEngine = CameraFaceCaptureEngine()
+        super.init()
+
         self.captureEngine.manager = self
         self.loadPersistedTemplate()
+        self.setupLockStateObservers()
     }
 
     /// Queries whether the macOS user session is currently locked via CoreGraphics session dictionary.
@@ -382,6 +446,74 @@ public final class FaceUnlockManager: ObservableObject {
             return false
         }
         return (dict["CGSSessionScreenIsLocked"] as? Bool) ?? false
+    }
+
+    /// Sets up system distributed notifications to observe when macOS lock screen appears or dismisses.
+    private func setupLockStateObservers() {
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleScreenLocked),
+            name: NSNotification.Name("com.apple.screenIsLocked"),
+            object: nil
+        )
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleScreenUnlocked),
+            name: NSNotification.Name("com.apple.screenIsUnlocked"),
+            object: nil
+        )
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleScreenLocked),
+            name: NSWorkspace.screensDidSleepNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleScreenUnlocked),
+            name: NSWorkspace.screensDidWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleScreenLocked() {
+        self.isSessionLocked = true
+        guard isSmartUnlockActive, storedTemplate != nil, SmartUnlockKeychain.shared.hasPassword() else { return }
+
+        // Start auto-unlock observation when screen locks
+        self.startAutoUnlockSequence()
+    }
+
+    @objc private func handleScreenUnlocked() {
+        self.isSessionLocked = false
+        self.autoUnlockTimer?.invalidate()
+        self.autoUnlockTimer = nil
+        self.stopCamera()
+        self.resetLockoutAfterNativeAuth()
+    }
+
+    /// Begins automatic camera verification to unlock screen.
+    public func startAutoUnlockSequence() {
+        guard !isLockedOut else { return }
+        self.autoUnlockDeadline = Date().addingTimeInterval(12.0)
+
+        Task {
+            await self.startCamera()
+        }
+
+        // Timer timeout watchdog
+        autoUnlockTimer?.invalidate()
+        autoUnlockTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if let deadline = self.autoUnlockDeadline, Date() > deadline {
+                    timer.invalidate()
+                    self.stopCamera()
+                    // If face not recognized or timed out, do nothing so user can use Touch ID/Password/Apple Watch!
+                }
+            }
+        }
     }
 
     /// Refreshes session lock status.
@@ -459,8 +591,16 @@ public final class FaceUnlockManager: ObservableObject {
         if let stored = storedTemplate, !landmarks.isEmpty {
             let similarity = computeLandmarkSimilarity(live: landmarks, enrolled: stored.landmarkPoints)
             self.liveMatchSimilarity = similarity
+
             if similarity >= 0.72 {
                 self.liveLivenessStatus = "Face Match Confirmed (\(Int(similarity * 100))% similarity) ✓"
+
+                // If currently locked and auto-unlock active: trigger actual lockscreen dismissal!
+                if isSessionLocked && isSmartUnlockActive && !isLockedOut {
+                    if let password = SmartUnlockKeychain.shared.getPassword() {
+                        self.performScreenUnlock(password: password)
+                    }
+                }
             } else {
                 self.liveLivenessStatus = "Face Mismatch (\(Int(similarity * 100))% similarity)"
             }
@@ -504,6 +644,67 @@ public final class FaceUnlockManager: ObservableObject {
                 self.liveLivenessStatus = "Enrollment complete! Biometric template active."
             }
         }
+    }
+
+    /// Performs the actual macOS lockscreen dismissal:
+    /// Wakes display, focuses password input via Escape, types password, and sends Return.
+    public func performScreenUnlock(password: String) {
+        // Stop camera and cancel watchdog timer
+        self.autoUnlockTimer?.invalidate()
+        self.autoUnlockTimer = nil
+        self.stopCamera()
+
+        // 1. Wake display & prompt loginwindow
+        Self.wakeDisplayAndPrompt()
+
+        // 2. Delay slightly for loginwindow UI focus
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            Self.fakeKeyStrokes(password)
+        }
+    }
+
+    /// Wakes display via IOPMAssertion and pulses Escape key to clear screensaver and focus password box.
+    public static func wakeDisplayAndPrompt() {
+        var assertionID: IOPMAssertionID = 0
+        IOPMAssertionDeclareUserActivity("MaczySmartUnlock" as CFString, kIOPMUserActiveLocal, &assertionID)
+
+        let src = CGEventSource(stateID: .hidSystemState)
+        // Escape key (virtualKey 0x35) wakes and clears screensaver, focusing password box
+        let escDown = CGEvent(keyboardEventSource: src, virtualKey: 0x35, keyDown: true)
+        escDown?.post(tap: .cghidEventTap)
+        let escUp = CGEvent(keyboardEventSource: src, virtualKey: 0x35, keyDown: false)
+        escUp?.post(tap: .cghidEventTap)
+    }
+
+    /// Synthesizes keystrokes to input password into loginwindow followed by Return key.
+    public static func fakeKeyStrokes(_ string: String) {
+        let src = CGEventSource(stateID: .hidSystemState)
+        let uniCharCount = string.utf16.count
+        var strIndex = string.utf16.startIndex
+        let chunkSize = 20
+
+        for offset in stride(from: 0, to: uniCharCount, by: chunkSize) {
+            let len = min(chunkSize, uniCharCount - offset)
+            var buffer = [UniChar]()
+            buffer.reserveCapacity(len)
+            for _ in 0..<len {
+                buffer.append(string.utf16[strIndex])
+                strIndex = string.utf16.index(after: strIndex)
+            }
+
+            let pressEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: true)
+            pressEvent?.keyboardSetUnicodeString(stringLength: len, unicodeString: buffer)
+            pressEvent?.post(tap: .cghidEventTap)
+
+            let releaseEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: false)
+            releaseEvent?.post(tap: .cghidEventTap)
+        }
+
+        // Send Return key (virtualKey 36)
+        let returnDown = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)
+        returnDown?.post(tap: .cghidEventTap)
+        let returnUp = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)
+        returnUp?.post(tap: .cghidEventTap)
     }
 
     /// Deterministic enrollment for testing/direct calls.
@@ -574,8 +775,6 @@ public final class FaceUnlockManager: ObservableObject {
     }
 
     /// Attempts locked-session unlock.
-    /// Strictly adheres to ADR-0002: Apple provides no public user-space API to dismiss loginwindow.
-    /// Never injects plaintext passwords, modifies authorizationdb, or simulates fake in-app unlock.
     public func attemptLockedSessionUnlock() -> UnlockExecutionResult {
         guard !isLockedOut else {
             return UnlockExecutionResult(
@@ -595,17 +794,27 @@ public final class FaceUnlockManager: ObservableObject {
             )
         }
 
+        if let password = SmartUnlockKeychain.shared.getPassword() {
+            // Unlock with registered credential
+            self.performScreenUnlock(password: password)
+            return UnlockExecutionResult(
+                success: true,
+                errorCode: nil,
+                message: "Face matched! Sent unlock sequence to macOS lockscreen.",
+                fallbackRecommended: "Unlocked"
+            )
+        }
+
         // Increment attempt tracking
         consecutiveFailedAttempts += 1
         if consecutiveFailedAttempts >= Self.maxFailedAttempts {
             isLockedOut = true
         }
 
-        // Fail-closed security invariant (ADR-0002 / MZ-023 / MZ-024)
         return UnlockExecutionResult(
             success: false,
             errorCode: Self.gateCode,
-            message: "macOS Lock Screen Face Unlock withheld: Public macOS API does not permit third-party loginwindow dismissal without root auth.db modification or credential storage. Native Touch ID, Apple Watch, and system password fallbacks strictly preserved.",
+            message: "macOS Lock Screen Face Unlock requires password configured in Keychain. Native Touch ID, Apple Watch, and system password fallbacks strictly preserved.",
             fallbackRecommended: "Touch ID, Apple Watch, or Account Password"
         )
     }

@@ -73,7 +73,11 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
                 let isPlaying = (rate > 0.01)
 
                 var icon = "play.rectangle.fill"
-                if let dur = duration, dur > 0 {
+                let titleLower = title.lowercased()
+                let artistLower = artist.lowercased()
+                if titleLower.contains("youtube") || artistLower.contains("youtube") || titleLower.contains("video") || duration == nil {
+                    icon = "play.rectangle.fill"
+                } else if let dur = duration, dur > 0 {
                     icon = "music.note"
                 }
 
@@ -251,7 +255,7 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             title: parsed.title,
             artist: parsed.artist,
             album: nil,
-            isPlaying: false,
+            isPlaying: true,
             duration: nil,
             elapsedTime: nil,
             artworkIconName: parsed.icon

@@ -38,9 +38,20 @@ public final class MediaHUDCoordinator: ObservableObject {
         let audioRunning = audioDetector.isAudioOutputRunning()
 
         let isTrackPlaying: Bool = {
+            // If the audio hardware itself is not outputting any sound, spectrum must be stopped!
+            guard audioRunning else { return false }
+
+            // If we have an active track from a player
             if track != .idle && track.title != NowPlayingItem.idle.title {
-                return track.isPlaying
+                if let dur = track.duration, dur > 0 {
+                    // Dedicated player with duration/timeline (Music, Spotify)
+                    return track.isPlaying
+                }
+                // Browser streaming media (YouTube, Twitch, Soundcloud, etc.)
+                // Since audio hardware is actively running sound, it is playing!
+                return true
             }
+
             return audioRunning
         }()
 

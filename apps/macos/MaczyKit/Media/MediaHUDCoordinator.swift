@@ -11,8 +11,8 @@ public final class MediaHUDCoordinator: ObservableObject {
     @Published public private(set) var isAudioActive: Bool = false
     @Published public private(set) var isAudioPlaying: Bool = false
 
-    /// Duration after audio pauses before the activity is dismissed and the notch returns to normal (default 5 minutes).
-    public static let pausedAudioDismissalTimeout: TimeInterval = 300
+    /// Duration after audio pauses before the activity is dismissed and the notch returns to normal (1 minute).
+    public static let pausedAudioDismissalTimeout: TimeInterval = 60
     public var customDismissalTimeout: TimeInterval? = nil
 
     private let provider: MediaRemoteProviderProtocol

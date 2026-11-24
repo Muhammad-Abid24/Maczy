@@ -187,13 +187,13 @@ public struct NotchContainerView: View {
                     HStack {
                         // Left wing: Circular album art / music icon with progress ring
                         NowPlayingCompactArtworkRing(track: mediaCoordinator.currentTrack)
-                            .padding(.leading, profile.hasPhysicalNotch ? 16 : 12)
+                            .padding(.leading, profile.hasPhysicalNotch ? 22 : 16)
 
                         Spacer()
 
                         // Right wing: Animated 4-bar equalizer
                         NowPlayingEqualizerView(isPlaying: mediaCoordinator.isAudioPlaying)
-                            .padding(.trailing, profile.hasPhysicalNotch ? 16 : 12)
+                            .padding(.trailing, profile.hasPhysicalNotch ? 22 : 16)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black)

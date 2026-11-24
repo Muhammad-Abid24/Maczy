@@ -101,7 +101,7 @@ public final class NotchOverlayWindowController {
 
     /// Target frame for active audio playback compact state with extended wings.
     public func audioCompactRect(for profile: NotchScreenProfile) -> CGRect {
-        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 110.0, 330.0) : 260.0
+        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 124.0, 344.0) : 280.0
         let targetHeight: CGFloat = profile.notchRect.height
         let x = profile.notchRect.midX - (targetWidth / 2.0)
         let y = profile.screenFrame.maxY - targetHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)

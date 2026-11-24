@@ -279,10 +279,11 @@ final class MediaHUDTests: XCTestCase {
     }
 
     @MainActor
-    func testMediaHUDCoordinatorFiveMinuteDismissal() async {
+    func testMediaHUDCoordinatorOneMinuteDismissal() async {
         let mediaMock = MockMediaRemoteProvider(initialItem: .idle)
         let audioMock = MockAudioOutputDetector(initialRunning: true, appName: "Safari", iconName: "safari.fill")
         let coordinator = MediaHUDCoordinator(provider: mediaMock, audioDetector: audioMock, autoStartMonitoring: false)
+        XCTAssertEqual(MediaHUDCoordinator.pausedAudioDismissalTimeout, 60.0)
         coordinator.customDismissalTimeout = 0.05 // 50ms for unit test
 
         await coordinator.refreshNowPlaying()

@@ -282,4 +282,31 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertFalse(coordinator.hasCustomVirtualDimensions)
         XCTAssertFalse(coordinator.hasCustomDimensions)
     }
+
+    @MainActor
+    func testNotificationRectAndEnlargedToastGeometry() {
+        let profile = NotchScreenProfile.fallback
+        let controller = NotchOverlayWindowController()
+
+        let compactRect = controller.compactRect(for: profile)
+        let notifRect = controller.notificationRect(for: profile)
+
+        XCTAssertEqual(compactRect, profile.notchRect)
+        // Notification rect must be taller and wider to house the bottom toast
+        XCTAssertGreaterThan(notifRect.height, compactRect.height)
+        XCTAssertGreaterThanOrEqual(notifRect.width, 320.0)
+
+        // Coordinates must be centered horizontally
+        XCTAssertEqual(notifRect.midX, profile.notchRect.midX, accuracy: 0.1)
+
+        // Coordinator notification state management
+        let coordinator = NotchCoordinator(profile: .fallback)
+        XCTAssertFalse(coordinator.isNotificationActive)
+
+        coordinator.handleNotificationStateChanged(true)
+        XCTAssertTrue(coordinator.isNotificationActive)
+
+        coordinator.handleNotificationStateChanged(false)
+        XCTAssertFalse(coordinator.isNotificationActive)
+    }
 }

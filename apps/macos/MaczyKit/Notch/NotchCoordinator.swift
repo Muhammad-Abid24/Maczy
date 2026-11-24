@@ -21,8 +21,9 @@ public final class NotchCoordinator: ObservableObject {
     }
 
     public let windowController: NotchOverlayWindowController
+    @Published public private(set) var isNotificationActive: Bool = false
     private var isTemporarilyVisibleForHUD: Bool = false
-    private var hudCancellable: AnyCancellable?
+    private var notificationCancellable: AnyCancellable?
 
     // MARK: - Physical Notch Custom Dimensions (Persisted via UserDefaults)
     @Published public var customPhysicalCompactWidth: CGFloat? {
@@ -326,31 +327,49 @@ public final class NotchCoordinator: ObservableObject {
             }
         }
 
-        // Automatically present overlay window when a system HUD event (Volume / Brightness) occurs
-        self.hudCancellable = SystemHUDCoordinator.shared.$activeHUD
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] hud in
-                self?.handleHUDEvent(hud)
-            }
+        // Automatically present and expand overlay window when any notification or system HUD event occurs
+        self.notificationCancellable = Publishers.CombineLatest3(
+            SystemHUDCoordinator.shared.$activeHUD,
+            LiveActivityCoordinator.shared.$primaryActivity,
+            TWSNotchCoordinator.shared.$activeConnectionToast
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] hud, activity, tws in
+            let hasNotification = (hud != nil || activity != nil || tws != nil)
+            self?.handleNotificationStateChanged(hasNotification)
+        }
     }
 
-    private func handleHUDEvent(_ hud: SystemHUDEvent?) {
-        if hud != nil {
+    public func handleNotificationStateChanged(_ hasNotification: Bool) {
+        guard hasNotification != self.isNotificationActive else { return }
+        self.isNotificationActive = hasNotification
+
+        if hasNotification {
             if !isOverlayVisible {
                 isTemporarilyVisibleForHUD = true
                 windowController.setOverlayVisible(true)
             }
-            if isPhysicalActive && expansionState == .compact {
-                let targetWidth = max(activeProfile.notchRect.width, 280.0)
-                windowController.animateToCompactWidth(targetWidth, profile: activeProfile)
+            if expansionState == .compact {
+                windowController.animateToNotificationSize(profile: activeProfile)
             }
         } else {
-            if isTemporarilyVisibleForHUD {
-                isTemporarilyVisibleForHUD = false
-                windowController.setOverlayVisible(isOverlayVisible)
-            }
-            if isPhysicalActive && expansionState == .compact {
-                windowController.animateToCompactWidth(activeProfile.notchRect.width, profile: activeProfile)
+            if expansionState == .compact {
+                windowController.animateToCompactSize(profile: activeProfile) { [weak self] in
+                    guard let self = self else { return }
+                    if self.isTemporarilyVisibleForHUD {
+                        self.isTemporarilyVisibleForHUD = false
+                        if !self.isOverlayVisible {
+                            self.windowController.setOverlayVisible(false)
+                        }
+                    }
+                }
+            } else {
+                if isTemporarilyVisibleForHUD {
+                    isTemporarilyVisibleForHUD = false
+                    if !isOverlayVisible {
+                        windowController.setOverlayVisible(false)
+                    }
+                }
             }
         }
     }

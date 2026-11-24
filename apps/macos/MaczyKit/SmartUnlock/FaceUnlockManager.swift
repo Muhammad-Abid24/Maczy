@@ -427,6 +427,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
     private var collectedEnrollmentFrames: [[BiometricTemplate.NormalizedPoint]] = []
     private var autoUnlockTimer: Timer?
     private var autoUnlockDeadline: Date?
+    private var lockPollingTimer: Timer?
 
     public override init() {
         self.isSmartUnlockActive = UserDefaults.standard.bool(forKey: "com.maczy.smartunlock.active")
@@ -448,19 +449,32 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
         return (dict["CGSSessionScreenIsLocked"] as? Bool) ?? false
     }
 
-    /// Sets up system distributed notifications to observe when macOS lock screen appears or dismisses.
+    /// Checks if macOS Accessibility permission is granted to this process.
+    public static func isAccessibilityGranted() -> Bool {
+        return AXIsProcessTrusted()
+    }
+
+    /// Prompts the user to grant macOS Accessibility permission in System Settings.
+    public static func requestAccessibilityPermission() {
+        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// Sets up system distributed notifications and active polling to observe when macOS lock screen appears or dismisses.
     private func setupLockStateObservers() {
         DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(handleScreenLocked),
             name: NSNotification.Name("com.apple.screenIsLocked"),
-            object: nil
+            object: nil,
+            suspensionBehavior: .deliverImmediately
         )
         DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(handleScreenUnlocked),
             name: NSNotification.Name("com.apple.screenIsUnlocked"),
-            object: nil
+            object: nil,
+            suspensionBehavior: .deliverImmediately
         )
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -475,6 +489,23 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
             name: NSWorkspace.screensDidWakeNotification,
             object: nil
         )
+
+        startLockPolling()
+    }
+
+    private func startLockPolling() {
+        lockPollingTimer?.invalidate()
+        lockPollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                let currentlyLocked = Self.checkCurrentSessionLocked()
+                if currentlyLocked && !self.isSessionLocked {
+                    self.handleScreenLocked()
+                } else if !currentlyLocked && self.isSessionLocked {
+                    self.handleScreenUnlocked()
+                }
+            }
+        }
     }
 
     @objc private func handleScreenLocked() {
@@ -496,7 +527,10 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
     /// Begins automatic camera verification to unlock screen.
     public func startAutoUnlockSequence() {
         guard !isLockedOut else { return }
-        self.autoUnlockDeadline = Date().addingTimeInterval(12.0)
+        self.autoUnlockDeadline = Date().addingTimeInterval(15.0)
+
+        // Wake display first to illuminate user and activate camera
+        Self.wakeDisplayAndPrompt()
 
         Task {
             await self.startCamera()
@@ -639,6 +673,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
                 )
                 self.storedTemplate = template
                 self.enrollmentState = .enrolled(enrolledAt: template.enrolledAt, templateId: template.id, qualityScore: quality)
+                self.isSmartUnlockActive = true
                 self.lastAudit = AntiSpoofAuditResult.standardMacReport(livenessPassed: true)
                 self.saveTemplateToDisk(template)
                 self.liveLivenessStatus = "Enrollment complete! Biometric template active."
@@ -668,37 +703,30 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
         var assertionID: IOPMAssertionID = 0
         IOPMAssertionDeclareUserActivity("MaczySmartUnlock" as CFString, kIOPMUserActiveLocal, &assertionID)
 
-        let src = CGEventSource(stateID: .hidSystemState)
-        // Escape key (virtualKey 0x35) wakes and clears screensaver, focusing password box
-        let escDown = CGEvent(keyboardEventSource: src, virtualKey: 0x35, keyDown: true)
+        let src = CGEventSource(stateID: .combinedSessionState)
+        // Escape key (virtualKey 53) wakes and clears screensaver, focusing password box
+        let escDown = CGEvent(keyboardEventSource: src, virtualKey: 53, keyDown: true)
         escDown?.post(tap: .cghidEventTap)
-        let escUp = CGEvent(keyboardEventSource: src, virtualKey: 0x35, keyDown: false)
+        let escUp = CGEvent(keyboardEventSource: src, virtualKey: 53, keyDown: false)
         escUp?.post(tap: .cghidEventTap)
     }
 
     /// Synthesizes keystrokes to input password into loginwindow followed by Return key.
     public static func fakeKeyStrokes(_ string: String) {
-        let src = CGEventSource(stateID: .hidSystemState)
-        let uniCharCount = string.utf16.count
-        var strIndex = string.utf16.startIndex
-        let chunkSize = 20
+        let src = CGEventSource(stateID: .combinedSessionState)
 
-        for offset in stride(from: 0, to: uniCharCount, by: chunkSize) {
-            let len = min(chunkSize, uniCharCount - offset)
-            var buffer = [UniChar]()
-            buffer.reserveCapacity(len)
-            for _ in 0..<len {
-                buffer.append(string.utf16[strIndex])
-                strIndex = string.utf16.index(after: strIndex)
-            }
-
-            let pressEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: true)
-            pressEvent?.keyboardSetUnicodeString(stringLength: len, unicodeString: buffer)
-            pressEvent?.post(tap: .cghidEventTap)
-
-            let releaseEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: false)
-            releaseEvent?.post(tap: .cghidEventTap)
+        for char in string {
+            let utf16Chars = Array(String(char).utf16)
+            let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true)
+            let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false)
+            keyDown?.keyboardSetUnicodeString(stringLength: utf16Chars.count, unicodeString: utf16Chars)
+            keyUp?.keyboardSetUnicodeString(stringLength: utf16Chars.count, unicodeString: utf16Chars)
+            keyDown?.post(tap: .cghidEventTap)
+            keyUp?.post(tap: .cghidEventTap)
+            usleep(15000)
         }
+
+        usleep(50000)
 
         // Send Return key (virtualKey 36)
         let returnDown = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)
@@ -738,6 +766,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
 
         self.storedTemplate = template
         self.enrollmentState = .enrolled(enrolledAt: template.enrolledAt, templateId: template.id, qualityScore: qualityScore)
+        self.isSmartUnlockActive = true
         self.lastAudit = AntiSpoofAuditResult.standardMacReport(livenessPassed: true)
         self.saveTemplateToDisk(template)
         return .success(template)
@@ -850,6 +879,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
            !template.isRevoked {
             self.storedTemplate = template
             self.enrollmentState = .enrolled(enrolledAt: template.enrolledAt, templateId: template.id, qualityScore: template.qualityScore)
+            self.isSmartUnlockActive = true
         }
     }
 

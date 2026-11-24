@@ -13,9 +13,14 @@ public struct UnlockDetailView: View {
     @State private var hasStoredPassword: Bool = SmartUnlockKeychain.shared.hasPassword()
     @State private var isEditingPassword: Bool = false
     @State private var passwordSaveStatus: String?
+    @State private var isAccessibilityGranted: Bool = FaceUnlockManager.isAccessibilityGranted()
 
     public init(appState: AppState) {
         self.appState = appState
+    }
+
+    private var isFullyReady: Bool {
+        faceManager.storedTemplate != nil && hasStoredPassword && isAccessibilityGranted && faceManager.isSmartUnlockActive
     }
 
     public var body: some View {
@@ -31,147 +36,213 @@ public struct UnlockDetailView: View {
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Text(faceManager.isSmartUnlockActive ? "SMART UNLOCK AKTIF" : "SMART UNLOCK NONAKTIF")
+                    Text(isFullyReady ? "SIAP DIGUNAKAN" : (faceManager.isSmartUnlockActive ? "BUTUH KONFIGURASI" : "NONAKTIF"))
                         .font(.system(size: 10, weight: .bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(faceManager.isSmartUnlockActive ? MaczyDesignTokens.statusGreen.opacity(0.15) : Color.secondary.opacity(0.15))
-                        .foregroundColor(faceManager.isSmartUnlockActive ? MaczyDesignTokens.statusGreen : .secondary)
+                        .background(isFullyReady ? MaczyDesignTokens.statusGreen.opacity(0.15) : (faceManager.isSmartUnlockActive ? MaczyDesignTokens.statusOrange.opacity(0.15) : Color.secondary.opacity(0.15)))
+                        .foregroundColor(isFullyReady ? MaczyDesignTokens.statusGreen : (faceManager.isSmartUnlockActive ? MaczyDesignTokens.statusOrange : .secondary))
                         .cornerRadius(6)
                 }
 
-                // Section 1: Smart Unlock Activation & macOS Keychain Password Management
-                VStack(alignment: .leading, spacing: 14) {
+                // Section: Checklist Kesiapan Smart Unlock (Readiness Checklist)
+                VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Image(systemName: "lock.open.trianglebadge.exclamationmark")
-                            .font(.system(size: 16))
+                        Image(systemName: "checklist")
+                            .font(.system(size: 15))
                             .foregroundColor(MaczyDesignTokens.brandPurple)
-                        Text("Pengaturan Smart Unlock & Kredensial Lockscreen")
+                        Text("Daftar Kesiapan Smart Unlock")
                             .font(.system(size: 13, weight: .bold))
                         Spacer()
+                        Button("Refresh Status") {
+                            hasStoredPassword = SmartUnlockKeychain.shared.hasPassword()
+                            isAccessibilityGranted = FaceUnlockManager.isAccessibilityGranted()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundColor(MaczyDesignTokens.brandPurple)
                     }
 
-                    // Toggle Smart Unlock
-                    Toggle("Aktifkan Smart Unlock untuk Lockscreen macOS", isOn: $faceManager.isSmartUnlockActive)
-                        .font(.system(size: 12, weight: .semibold))
-                        .toggleStyle(.switch)
-
-                    Divider()
-
-                    // Keychain Password Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Sandi Login Akun macOS (Disimpan di Keychain yang Aman)")
-                            .font(.system(size: 11, weight: .semibold))
-
-                        Text("Untuk membuka lockscreen secara otomatis saat wajah Anda dikenali oleh kamera, Maczy menggunakan sandi login akun Anda yang disimpan secara terenkripsi di macOS Keychain lokal.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-
-                        if hasStoredPassword && !isEditingPassword {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .foregroundColor(MaczyDesignTokens.statusGreen)
-                                    .font(.system(size: 14))
-
-                                Text("Sandi login Mac Anda telah tersimpan dengan aman di Keychain.")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(MaczyDesignTokens.statusGreen)
-
-                                Spacer()
-
-                                Button("Ubah Sandi") {
-                                    isEditingPassword = true
-                                    passwordSaveStatus = nil
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                Button("Hapus") {
-                                    SmartUnlockKeychain.shared.deletePassword()
-                                    hasStoredPassword = false
-                                    passwordSaveStatus = "Sandi dihapus dari Keychain."
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
+                    VStack(spacing: 8) {
+                        // 1. Wajah Terdaftar
+                        HStack(spacing: 10) {
+                            Image(systemName: faceManager.storedTemplate != nil ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(faceManager.storedTemplate != nil ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusOrange)
+                                .font(.system(size: 14))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("1. Pendaftaran Wajah")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(faceManager.storedTemplate != nil ? "Wajah Anda telah terdaftar dan template biometrik tersimpan." : "Wajah belum didaftarkan. Nyalakan kamera dan daftarkan wajah di bawah.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
                             }
-                            .padding(10)
-                            .background(MaczyDesignTokens.statusGreen.opacity(0.08))
-                            .cornerRadius(6)
-                        } else {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 8) {
-                                    SecureField("Masukkan sandi login Mac Anda", text: $passwordInput)
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.system(size: 11))
+                            Spacer()
+                        }
 
-                                    Button("Simpan ke Keychain") {
-                                        guard !passwordInput.isEmpty else { return }
-                                        let saved = SmartUnlockKeychain.shared.savePassword(passwordInput)
-                                        if saved {
-                                            hasStoredPassword = true
-                                            isEditingPassword = false
-                                            passwordInput = ""
-                                            passwordSaveStatus = "Sandi berhasil disimpan ke Keychain."
-                                        } else {
-                                            passwordSaveStatus = "Gagal menyimpan sandi ke Keychain."
-                                        }
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(MaczyDesignTokens.brandPurple)
-                                    .controlSize(.small)
-                                    .disabled(passwordInput.isEmpty)
+                        Divider()
 
-                                    if isEditingPassword {
-                                        Button("Batal") {
-                                            isEditingPassword = false
-                                            passwordInput = ""
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
+                        // 2. Sandi Login macOS di Keychain
+                        HStack(spacing: 10) {
+                            Image(systemName: hasStoredPassword ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundColor(hasStoredPassword ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusRed)
+                                .font(.system(size: 14))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("2. Sandi Login Akun macOS di Keychain")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(hasStoredPassword ? "Sandi login Mac tersimpan dengan aman di macOS Keychain." : "Sandi login belum disimpan! macOS memerlukan sandi ini untuk membuka lockscreen saat wajah Anda cocok.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(hasStoredPassword ? .secondary : MaczyDesignTokens.statusRed)
+                            }
+                            Spacer()
+                        }
+
+                        Divider()
+
+                        // 3. Izin Aksesibilitas macOS
+                        HStack(spacing: 10) {
+                            Image(systemName: isAccessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundColor(isAccessibilityGranted ? MaczyDesignTokens.statusGreen : MaczyDesignTokens.statusRed)
+                                .font(.system(size: 14))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("3. Izin Aksesibilitas macOS")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(isAccessibilityGranted ? "Izin Aksesibilitas telah aktif untuk Maczy." : "Belum diberikan. Wajib diaktifkan di Pengaturan Sistem agar Maczy dapat mengetik sandi ke lockscreen.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(isAccessibilityGranted ? .secondary : MaczyDesignTokens.statusRed)
+                            }
+                            Spacer()
+                            if !isAccessibilityGranted {
+                                Button("Beri Izin") {
+                                    FaceUnlockManager.requestAccessibilityPermission()
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                        isAccessibilityGranted = FaceUnlockManager.isAccessibilityGranted()
                                     }
                                 }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .tint(MaczyDesignTokens.statusRed)
+                            }
+                        }
 
-                                if let status = passwordSaveStatus {
-                                    Text(status)
+                        Divider()
+
+                        // 4. Status Aktif
+                        HStack(spacing: 10) {
+                            Image(systemName: faceManager.isSmartUnlockActive ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(faceManager.isSmartUnlockActive ? MaczyDesignTokens.statusGreen : .secondary)
+                                .font(.system(size: 14))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("4. Smart Unlock Diaktifkan")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(faceManager.isSmartUnlockActive ? "Fitur aktif dan memantau lockscreen macOS." : "Fitur saat ini nonaktif.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $faceManager.isSmartUnlockActive)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
+                    .cornerRadius(8)
+
+                    // Action Banner: Jika sandi belum diisi
+                    if !hasStoredPassword || isEditingPassword {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(MaczyDesignTokens.statusOrange)
+                                    .padding(.top, 2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Langkah Wajib: Simpan Sandi Login Mac Anda")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(MaczyDesignTokens.statusOrange)
+                                    Text("Karena macOS tidak mengizinkan aplikasi pihak ketiga membuka layar tanpa kredensial, Maczy menyimpan sandi akun Anda secara terenkripsi di macOS Keychain lokal. Sandi ini HANYA dikirim saat wajah Anda terverifikasi di kamera.")
                                         .font(.system(size: 10))
-                                        .foregroundColor(MaczyDesignTokens.brandPurple)
+                                        .foregroundColor(.secondary)
+
+                                    HStack(spacing: 8) {
+                                        SecureField("Masukkan sandi login Mac Anda...", text: $passwordInput)
+                                            .textFieldStyle(.roundedBorder)
+                                            .font(.system(size: 11))
+
+                                        Button("Simpan ke Keychain") {
+                                            guard !passwordInput.isEmpty else { return }
+                                            let saved = SmartUnlockKeychain.shared.savePassword(passwordInput)
+                                            if saved {
+                                                hasStoredPassword = true
+                                                isEditingPassword = false
+                                                passwordInput = ""
+                                                passwordSaveStatus = "Sandi berhasil disimpan ke Keychain!"
+                                            } else {
+                                                passwordSaveStatus = "Gagal menyimpan sandi."
+                                            }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(MaczyDesignTokens.brandPurple)
+                                        .controlSize(.small)
+                                        .disabled(passwordInput.isEmpty)
+
+                                        if isEditingPassword {
+                                            Button("Batal") {
+                                                isEditingPassword = false
+                                                passwordInput = ""
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.small)
+                                        }
+                                    }
+                                    .padding(.top, 4)
+
+                                    if let status = passwordSaveStatus {
+                                        Text(status)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(MaczyDesignTokens.statusGreen)
+                                    }
                                 }
                             }
                         }
+                        .padding(12)
+                        .background(MaczyDesignTokens.statusOrange.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(MaczyDesignTokens.statusOrange.opacity(0.3), lineWidth: 1)
+                        )
                     }
 
-                    // Fallback Guarantee Callout
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "shield.lefthalf.filled")
-                            .font(.system(size: 14))
-                            .foregroundColor(MaczyDesignTokens.statusBlue)
-                            .padding(.top, 1)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Jaminan Keamanan & Fallback")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(MaczyDesignTokens.statusBlue)
-                            Text("Ketika layar terkunci dan wajah Anda TIDAK dikenali atau tidak ada orang di depan kamera, Maczy sama sekali tidak melakukan input apa pun. Layar tetap terkunci dengan aman dan Anda tetap bisa membukanya melalui Touch ID, Apple Watch, atau mengetik sandi seperti biasa.")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                    // Action Banner: Jika semua siap
+                    if isFullyReady {
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 20))
+                                .foregroundColor(MaczyDesignTokens.statusGreen)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Smart Unlock Siap Digunakan!")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(MaczyDesignTokens.statusGreen)
+                                Text("Kunci layar Mac Anda sekarang. Hadapkan wajah Anda ke kamera, Maczy akan otomatis mengenali wajah dan membuka lockscreen.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button("Kunci Layar Sekarang (Tes)") {
+                                _ = SystemLockManager.shared.lockScreen()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(MaczyDesignTokens.statusGreen)
+                            .controlSize(.small)
                         }
-                    }
-                    .padding(8)
-                    .background(MaczyDesignTokens.statusBlue.opacity(0.08))
-                    .cornerRadius(6)
-
-                    // Quick Lock Screen Button
-                    HStack {
-                        Button("Kunci Layar Sekarang (Tes Smart Unlock)") {
-                            _ = SystemLockManager.shared.lockScreen()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(MaczyDesignTokens.brandPurple)
-                        .controlSize(.small)
-
-                        Text("Klik untuk langsung mengunci Mac Anda dan mencoba membuka layar dengan wajah.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                        .padding(12)
+                        .background(MaczyDesignTokens.statusGreen.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(MaczyDesignTokens.statusGreen.opacity(0.3), lineWidth: 1)
+                        )
                     }
                 }
                 .padding(14)
@@ -262,10 +333,10 @@ public struct UnlockDetailView: View {
                                         Image(systemName: "camera.fill")
                                             .font(.system(size: 28))
                                             .foregroundColor(.secondary)
-                                        Text("Kamera Belum Aktif")
+                                        Text(faceManager.storedTemplate != nil ? "Wajah Telah Terdaftar" : "Kamera Belum Aktif")
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundColor(.white)
-                                        Text("Klik 'Nyalakan Kamera' untuk memulai deteksi wajah secara real-time dan mendaftarkan wajah Anda.")
+                                        Text(faceManager.storedTemplate != nil ? "Template biometrik Anda aktif. Klik 'Nyalakan Kamera' untuk menguji deteksi wajah langsung." : "Klik 'Nyalakan Kamera' untuk memulai deteksi wajah secara real-time dan mendaftarkan wajah Anda.")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
@@ -332,49 +403,6 @@ public struct UnlockDetailView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(8)
-
-                    // Anti-Spoof & Hardware Sensor Audit Card
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "camera.metering.matrix")
-                                .font(.system(size: 20))
-                                .foregroundColor(MaczyDesignTokens.statusOrange)
-                                .frame(width: 32)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Sensor Hardware: \(faceManager.lastAudit.sensorType)")
-                                        .font(.system(size: 11, weight: .semibold))
-                                    Spacer()
-                                    Text(faceManager.lastAudit.riskLevel.rawValue)
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(MaczyDesignTokens.statusOrange)
-                                }
-
-                                Text(faceManager.lastAudit.auditSummary)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 8) {
-                                    Button("Audit Anti-Spoof Real-Time") {
-                                        faceManager.runAntiSpoofAudit(simulatedPhotoAttack: false)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                    Button("Simulasi Serangan Foto 2D") {
-                                        faceManager.runAntiSpoofAudit(simulatedPhotoAttack: true)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
-                                .padding(.top, 2)
-                            }
                         }
                     }
                     .padding(12)
@@ -515,5 +543,9 @@ public struct UnlockDetailView: View {
         }
         .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
         .cornerRadius(12)
+        .onAppear {
+            hasStoredPassword = SmartUnlockKeychain.shared.hasPassword()
+            isAccessibilityGranted = FaceUnlockManager.isAccessibilityGranted()
+        }
     }
 }

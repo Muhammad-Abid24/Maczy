@@ -94,7 +94,7 @@ public struct NotchContainerView: View {
                                 .foregroundColor(.white)
                                 .frame(minWidth: 38, alignment: .trailing)
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 26)
                         .padding(.bottom, 12)
 
                     } else if let tws = twsCoordinator.activeConnectionToast {
@@ -122,7 +122,7 @@ public struct NotchContainerView: View {
                                 .fill(MaczyDesignTokens.statusGreen)
                                 .frame(width: 6, height: 6)
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 26)
                         .padding(.bottom, 12)
 
                     } else if let activity = liveCoordinator.primaryActivity {
@@ -155,7 +155,7 @@ public struct NotchContainerView: View {
                                     .foregroundColor(MaczyDesignTokens.statusRed)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 26)
                         .padding(.bottom, 12)
                     }
                 }

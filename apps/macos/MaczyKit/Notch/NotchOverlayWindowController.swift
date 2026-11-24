@@ -84,7 +84,7 @@ public final class NotchOverlayWindowController {
 
     /// Target frame when a notification, volume, or brightness HUD is actively presenting.
     public func notificationRect(for profile: NotchScreenProfile) -> CGRect {
-        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 80.0, 335.0) : 340.0
+        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 90.0, 350.0) : 350.0
         let targetHeight: CGFloat = profile.hasPhysicalNotch ? (profile.notchRect.height + 46.0) : 64.0
         let x = profile.notchRect.midX - (targetWidth / 2.0)
         let y = profile.screenFrame.maxY - targetHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)

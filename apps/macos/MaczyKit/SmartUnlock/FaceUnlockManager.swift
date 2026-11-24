@@ -179,8 +179,12 @@ public struct UnlockExecutionResult: Sendable, Equatable {
 /// Secure storage of user account unlock credential in the macOS Keychain.
 public final class SmartUnlockKeychain: @unchecked Sendable {
     public static let shared = SmartUnlockKeychain()
-    private let service = "com.maczy.smartunlock"
+    public let service: String
     private var account: String { NSUserName() }
+
+    public init(service: String = "com.maczy.smartunlock") {
+        self.service = service
+    }
 
     public func savePassword(_ password: String) -> Bool {
         guard let data = password.data(using: .utf8) else { return false }
@@ -423,6 +427,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
     @Published public private(set) var isLockedOut: Bool = false
     @Published public private(set) var isSessionLocked: Bool = false
 
+    public var keychain: SmartUnlockKeychain = .shared
     public let captureEngine: CameraFaceCaptureEngine
     private var collectedEnrollmentFrames: [[BiometricTemplate.NormalizedPoint]] = []
     private var autoUnlockTimer: Timer?
@@ -446,7 +451,16 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
         guard let dict = CGSessionCopyCurrentDictionary() as? [String: Any] else {
             return false
         }
-        return (dict["CGSSessionScreenIsLocked"] as? Bool) ?? false
+        if let lockedInt = dict["CGSSessionScreenIsLocked"] as? Int {
+            return lockedInt == 1
+        }
+        if let lockedNum = dict["CGSSessionScreenIsLocked"] as? NSNumber {
+            return lockedNum.boolValue
+        }
+        if let lockedBool = dict["CGSSessionScreenIsLocked"] as? Bool {
+            return lockedBool
+        }
+        return false
     }
 
     /// Checks if macOS Accessibility permission is granted to this process.
@@ -510,7 +524,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
 
     @objc private func handleScreenLocked() {
         self.isSessionLocked = true
-        guard isSmartUnlockActive, storedTemplate != nil, SmartUnlockKeychain.shared.hasPassword() else { return }
+        guard isSmartUnlockActive, storedTemplate != nil, keychain.hasPassword() else { return }
 
         // Start auto-unlock observation when screen locks
         self.startAutoUnlockSequence()
@@ -626,12 +640,12 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
             let similarity = computeLandmarkSimilarity(live: landmarks, enrolled: stored.landmarkPoints)
             self.liveMatchSimilarity = similarity
 
-            if similarity >= 0.72 {
+            if similarity >= 0.60 {
                 self.liveLivenessStatus = "Face Match Confirmed (\(Int(similarity * 100))% similarity) ✓"
 
                 // If currently locked and auto-unlock active: trigger actual lockscreen dismissal!
-                if isSessionLocked && isSmartUnlockActive && !isLockedOut {
-                    if let password = SmartUnlockKeychain.shared.getPassword() {
+                if (isSessionLocked || Self.checkCurrentSessionLocked()) && isSmartUnlockActive && !isLockedOut {
+                    if let password = keychain.getPassword() {
                         self.performScreenUnlock(password: password)
                     }
                 }
@@ -692,8 +706,8 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
         // 1. Wake display & prompt loginwindow
         Self.wakeDisplayAndPrompt()
 
-        // 2. Delay slightly for loginwindow UI focus
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        // 2. Wait 0.5s for loginwindow UI to wake and focus
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             Self.fakeKeyStrokes(password)
         }
     }
@@ -703,7 +717,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
         var assertionID: IOPMAssertionID = 0
         IOPMAssertionDeclareUserActivity("MaczySmartUnlock" as CFString, kIOPMUserActiveLocal, &assertionID)
 
-        let src = CGEventSource(stateID: .combinedSessionState)
+        let src = CGEventSource(stateID: .hidSystemState)
         // Escape key (virtualKey 53) wakes and clears screensaver, focusing password box
         let escDown = CGEvent(keyboardEventSource: src, virtualKey: 53, keyDown: true)
         escDown?.post(tap: .cghidEventTap)
@@ -713,26 +727,40 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
 
     /// Synthesizes keystrokes to input password into loginwindow followed by Return key.
     public static func fakeKeyStrokes(_ string: String) {
-        let src = CGEventSource(stateID: .combinedSessionState)
+        let src = CGEventSource(stateID: .hidSystemState)
+        let PER = 20
+        let uniCharCount = string.utf16.count
+        var strIndex = string.utf16.startIndex
 
-        for char in string {
-            let utf16Chars = Array(String(char).utf16)
-            let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true)
-            let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false)
-            keyDown?.keyboardSetUnicodeString(stringLength: utf16Chars.count, unicodeString: utf16Chars)
-            keyUp?.keyboardSetUnicodeString(stringLength: utf16Chars.count, unicodeString: utf16Chars)
-            keyDown?.post(tap: .cghidEventTap)
-            keyUp?.post(tap: .cghidEventTap)
-            usleep(15000)
+        for offset in stride(from: 0, to: uniCharCount, by: PER) {
+            let pressEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: true)
+            let len = min(PER, uniCharCount - offset)
+            var buffer = [UniChar]()
+            buffer.reserveCapacity(len)
+            for _ in 0..<len {
+                buffer.append(string.utf16[strIndex])
+                strIndex = string.utf16.index(after: strIndex)
+            }
+            pressEvent?.keyboardSetUnicodeString(stringLength: len, unicodeString: buffer)
+            pressEvent?.post(tap: .cghidEventTap)
+
+            let releaseEvent = CGEvent(keyboardEventSource: src, virtualKey: 49, keyDown: false)
+            releaseEvent?.post(tap: .cghidEventTap)
+            usleep(20000)
         }
 
-        usleep(50000)
+        usleep(60000)
 
-        // Send Return key (virtualKey 36)
+        // Send Return key (virtualKey 36 & 52 for full layout compatibility)
         let returnDown = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)
         returnDown?.post(tap: .cghidEventTap)
         let returnUp = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)
         returnUp?.post(tap: .cghidEventTap)
+
+        let enterDown = CGEvent(keyboardEventSource: src, virtualKey: 52, keyDown: true)
+        enterDown?.post(tap: .cghidEventTap)
+        let enterUp = CGEvent(keyboardEventSource: src, virtualKey: 52, keyDown: false)
+        enterUp?.post(tap: .cghidEventTap)
     }
 
     /// Deterministic enrollment for testing/direct calls.
@@ -823,7 +851,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
             )
         }
 
-        if let password = SmartUnlockKeychain.shared.getPassword() {
+        if let password = keychain.getPassword() {
             // Unlock with registered credential
             self.performScreenUnlock(password: password)
             return UnlockExecutionResult(
@@ -921,7 +949,7 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
         }
         let avgDist = totalDist / Float(sampleCount)
         // Convert distance to similarity score between 0.0 and 1.0
-        let similarity = max(0.0, 1.0 - (avgDist * 6.0))
+        let similarity = max(0.0, min(1.0, 1.0 - (avgDist * 3.5)))
         return similarity
     }
 }

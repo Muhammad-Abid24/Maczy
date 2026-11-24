@@ -5,13 +5,15 @@ import XCTest
 final class FaceUnlockTests: XCTestCase {
 
     override func setUp() async throws {
-        SmartUnlockKeychain.shared.deletePassword()
+        FaceUnlockManager.shared.keychain = SmartUnlockKeychain(service: "com.maczy.smartunlock.test")
+        FaceUnlockManager.shared.keychain.deletePassword()
         FaceUnlockManager.shared.revokeEnrollment()
         FaceUnlockManager.shared.resetLockoutAfterNativeAuth()
     }
 
     override func tearDown() async throws {
-        SmartUnlockKeychain.shared.deletePassword()
+        FaceUnlockManager.shared.keychain.deletePassword()
+        FaceUnlockManager.shared.keychain = .shared
         FaceUnlockManager.shared.revokeEnrollment()
         FaceUnlockManager.shared.resetLockoutAfterNativeAuth()
     }
@@ -100,7 +102,7 @@ final class FaceUnlockTests: XCTestCase {
 
     func testSmartUnlockKeychainLifecycleAndUnlockSuccess() {
         let manager = FaceUnlockManager.shared
-        let keychain = SmartUnlockKeychain.shared
+        let keychain = manager.keychain
 
         XCTAssertFalse(keychain.hasPassword())
         XCTAssertNil(keychain.getPassword())

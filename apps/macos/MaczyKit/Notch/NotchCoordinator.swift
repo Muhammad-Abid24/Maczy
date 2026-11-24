@@ -21,6 +21,9 @@ public final class NotchCoordinator: ObservableObject {
     }
 
     public let windowController: NotchOverlayWindowController
+    @Published public private(set) var isNotificationActive: Bool = false
+    private var isTemporarilyVisibleForHUD: Bool = false
+    private var notificationCancellable: AnyCancellable?
 
     // MARK: - Physical Notch Custom Dimensions (Persisted via UserDefaults)
     @Published public var customPhysicalCompactWidth: CGFloat? {
@@ -323,6 +326,52 @@ public final class NotchCoordinator: ObservableObject {
                 self?.updateProfile()
             }
         }
+
+        // Automatically present and expand overlay window when any notification or system HUD event occurs
+        self.notificationCancellable = Publishers.CombineLatest3(
+            SystemHUDCoordinator.shared.$activeHUD,
+            LiveActivityCoordinator.shared.$primaryActivity,
+            TWSNotchCoordinator.shared.$activeConnectionToast
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] hud, activity, tws in
+            let hasNotification = (hud != nil || activity != nil || tws != nil)
+            self?.handleNotificationStateChanged(hasNotification)
+        }
+    }
+
+    public func handleNotificationStateChanged(_ hasNotification: Bool) {
+        guard hasNotification != self.isNotificationActive else { return }
+        self.isNotificationActive = hasNotification
+
+        if hasNotification {
+            if !isOverlayVisible {
+                isTemporarilyVisibleForHUD = true
+                windowController.setOverlayVisible(true)
+            }
+            if expansionState == .compact {
+                windowController.animateToNotificationSize(profile: activeProfile)
+            }
+        } else {
+            if expansionState == .compact {
+                windowController.animateToCompactSize(profile: activeProfile) { [weak self] in
+                    guard let self = self else { return }
+                    if self.isTemporarilyVisibleForHUD {
+                        self.isTemporarilyVisibleForHUD = false
+                        if !self.isOverlayVisible {
+                            self.windowController.setOverlayVisible(false)
+                        }
+                    }
+                }
+            } else {
+                if isTemporarilyVisibleForHUD {
+                    isTemporarilyVisibleForHUD = false
+                    if !isOverlayVisible {
+                        windowController.setOverlayVisible(false)
+                    }
+                }
+            }
+        }
     }
 
     /// Refresh screen profile based on current active display and displayMode preference.
@@ -383,7 +432,11 @@ public final class NotchCoordinator: ObservableObject {
     /// Set explicit expansion state with animated window adjustment.
     public func setExpansionState(_ state: NotchExpansionState) {
         self.expansionState = state
-        windowController.animateToState(state, profile: activeProfile)
+        if state == .compact && isNotificationActive {
+            windowController.animateToNotificationSize(profile: activeProfile)
+        } else {
+            windowController.animateToState(state, profile: activeProfile)
+        }
     }
 
     /// Show or hide the physical/virtual notch overlay panel.

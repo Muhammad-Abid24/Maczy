@@ -173,9 +173,10 @@ public struct NotchDetailView: View {
                     // Volume Slider
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Image(systemName: "speaker.wave.2.fill")
+                            Image(systemName: systemHUD.isVolumeMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                                 .font(.system(size: 11))
-                            Text("Volume: \(Int(systemHUD.currentVolume * 100))%")
+                                .foregroundColor(systemHUD.isVolumeMuted ? MaczyDesignTokens.statusRed : .primary)
+                            Text(systemHUD.isVolumeMuted ? "Volume: Muted (0%)" : "Volume: \(Int(systemHUD.currentVolume * 100))%")
                                 .font(.system(size: 11, weight: .medium))
                         }
                         Slider(value: Binding(

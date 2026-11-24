@@ -167,4 +167,75 @@ final class MediaHUDTests: XCTestCase {
         XCTAssertFalse(item.title.isEmpty)
         XCTAssertFalse(item.artist.isEmpty)
     }
+
+    @MainActor
+    func testSystemHUDHardwareSynchronization() {
+        let audioMock = MockAudioHardwareController(initialVolume: 0.30, initialMuted: false)
+        let displayMock = MockDisplayHardwareController(initialBrightness: 0.60)
+        let coordinator = SystemHUDCoordinator(
+            audioController: audioMock,
+            displayController: displayMock,
+            autoStartObserving: true
+        )
+
+        // Initial sync state
+        XCTAssertEqual(coordinator.currentVolume, 0.30, accuracy: 0.001)
+        XCTAssertEqual(coordinator.isVolumeMuted, false)
+        XCTAssertEqual(coordinator.currentBrightness, 0.60, accuracy: 0.001)
+
+        // 1. Simulate external hardware volume change (e.g. keyboard F12)
+        audioMock.simulateExternalHardwareChange(volume: 0.85, isMuted: false)
+        XCTAssertEqual(coordinator.currentVolume, 0.85, accuracy: 0.001)
+        XCTAssertNotNil(coordinator.activeHUD)
+        XCTAssertEqual(coordinator.activeHUD?.type, .volume)
+        XCTAssertEqual(coordinator.activeHUD?.percentage, 85)
+        XCTAssertEqual(coordinator.activeHUD?.iconName, "speaker.wave.3.fill")
+
+        // 2. Simulate external mute change (e.g. keyboard mute key)
+        audioMock.simulateExternalHardwareChange(volume: 0.85, isMuted: true)
+        XCTAssertEqual(coordinator.isVolumeMuted, true)
+        XCTAssertEqual(coordinator.activeHUD?.type, .volume)
+        XCTAssertEqual(coordinator.activeHUD?.percentage, 0)
+        XCTAssertEqual(coordinator.activeHUD?.iconName, "speaker.slash.fill")
+
+        // 3. Simulate external brightness change (e.g. keyboard F1/F2)
+        displayMock.simulateExternalHardwareChange(brightness: 0.20)
+        XCTAssertEqual(coordinator.currentBrightness, 0.20, accuracy: 0.001)
+        XCTAssertEqual(coordinator.activeHUD?.type, .brightness)
+        XCTAssertEqual(coordinator.activeHUD?.percentage, 20)
+        XCTAssertEqual(coordinator.activeHUD?.iconName, "sun.min.fill")
+
+        displayMock.simulateExternalHardwareChange(brightness: 0.95)
+        XCTAssertEqual(coordinator.currentBrightness, 0.95, accuracy: 0.001)
+        XCTAssertEqual(coordinator.activeHUD?.type, .brightness)
+        XCTAssertEqual(coordinator.activeHUD?.percentage, 95)
+        XCTAssertEqual(coordinator.activeHUD?.iconName, "sun.max.fill")
+
+        // 4. Test programmatic setVolume propagates to hardware
+        coordinator.setVolume(0.50)
+        XCTAssertEqual(audioMock.fetchVolume(), 0.50, accuracy: 0.001)
+        XCTAssertFalse(audioMock.isMuted())
+        XCTAssertEqual(coordinator.activeHUD?.percentage, 50)
+
+        // 5. Test programmatic setBrightness propagates to hardware
+        coordinator.setBrightness(0.70)
+        XCTAssertEqual(displayMock.fetchBrightness(), 0.70, accuracy: 0.001)
+        XCTAssertEqual(coordinator.activeHUD?.percentage, 70)
+    }
+
+    @MainActor
+    func testNotchCoordinatorHUDAutoReveal() {
+        let coordinator = NotchCoordinator.shared
+        coordinator.isOverlayVisible = false
+        XCTAssertFalse(coordinator.isOverlayVisible)
+
+        // Trigger a HUD event
+        SystemHUDCoordinator.shared.showHUD(type: .volume, level: 0.75, autoDismissSeconds: 0)
+        XCTAssertNotNil(SystemHUDCoordinator.shared.activeHUD)
+
+        // Dismiss HUD
+        SystemHUDCoordinator.shared.dismissHUD()
+        XCTAssertNil(SystemHUDCoordinator.shared.activeHUD)
+        XCTAssertFalse(coordinator.isOverlayVisible)
+    }
 }

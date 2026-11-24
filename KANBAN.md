@@ -64,6 +64,8 @@
 ## History format
 `YYYY-MM-DD | task | from -> to | branch | actual evidence | reviewer`.
 
+2026-11-25 | MZ-016-SYNC | IN PROGRESS -> DONE | feat/dynamic-notch-volume-brightness-sync | Verified on branch feat/dynamic-notch-volume-brightness-sync: Native CoreAudio volume observation via AudioObjectAddPropertyListenerBlock, DisplayServices brightness polling & media key event monitoring, SystemHUDCoordinator two-way hardware sync, NotchCoordinator auto-HUD reveal with smooth expansion, NotchDetailView live sync, 23 Rust + 245 Swift tests pass, zero warnings | Product Owner
+
 2026-11-24 | MZ-024 | BLOCKED -> DONE | feat/mz-024-face-unlock | Verified on branch feat/mz-024-face-unlock: On-device local biometric template enrollment & revocation, anti-spoofing sensor audit (2D RGB vs TrueDepth IR hardware detection), presentation attack rejection test, lock state observation via CGSessionCopyCurrentDictionary, attempt rate limiting (max 3 failures before lockout), fail-closed GATE_MZ_024 security gating preserving native Touch ID and system password fallbacks, UnlockDetailView laboratory, 23 Rust + 240 Swift tests pass, zero warnings | Product Owner
 
 2026-11-23 | MZ-029 | BLOCKED -> DONE | feat/mz-029-cleaner-deletion-execution | Verified on branch feat/mz-029-cleaner-deletion-execution: Fixed System Cleaner button responsiveness (@ObservedObject binding for child managers, non-blocking background cooperative scan, .contentShape(Rectangle()) on category/tab targets), safe reversible macOS Trash workflow (FileManager.trashItem), strict protection exclusions (.git, documents, system), explicit review sheet before deletion, disposable fixture tests, 22 Rust + 230 Swift tests pass, zero warnings | Product Owner

@@ -82,6 +82,66 @@ public final class NotchOverlayWindowController {
         }
     }
 
+    /// Target frame when a notification, volume, or brightness HUD is actively presenting.
+    public func notificationRect(for profile: NotchScreenProfile) -> CGRect {
+        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 90.0, 350.0) : 350.0
+        let targetHeight: CGFloat = profile.hasPhysicalNotch ? (profile.notchRect.height + 46.0) : 64.0
+        let x = profile.notchRect.midX - (targetWidth / 2.0)
+        let y = profile.screenFrame.maxY - targetHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+        return CGRect(x: x, y: y, width: targetWidth, height: targetHeight)
+    }
+
+    /// Target frame for regular compact state.
+    public func compactRect(for profile: NotchScreenProfile) -> CGRect {
+        return profile.notchRect
+    }
+
+    /// Smoothly animate panel into enlarged notification banner size.
+    public func animateToNotificationSize(profile: NotchScreenProfile) {
+        ensurePanelCreated()
+        guard let panel = panel else { return }
+        let targetFrame = notificationRect(for: profile)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.28
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }
+    }
+
+    /// Smoothly animate panel back to normal compact size.
+    public func animateToCompactSize(profile: NotchScreenProfile, completion: (@MainActor () -> Void)? = nil) {
+        ensurePanelCreated()
+        guard let panel = panel else {
+            completion?()
+            return
+        }
+        let targetFrame = compactRect(for: profile)
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }, completionHandler: {
+            Task { @MainActor in
+                completion?()
+            }
+        })
+    }
+
+    /// Smoothly animate panel width in compact mode (e.g. during HUD toast presentation).
+    public func animateToCompactWidth(_ width: CGFloat, profile: NotchScreenProfile) {
+        ensurePanelCreated()
+        guard let panel = panel else { return }
+        let baseRect = targetRect(for: .compact, profile: profile)
+        let newX = baseRect.midX - (width / 2.0)
+        let targetFrame = CGRect(x: newX, y: baseRect.minY, width: width, height: baseRect.height)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }
+    }
+
     /// Handle simulated or event-based outside click testing. Returns true if outside and collapsed.
     @discardableResult
     public func handleSimulatedClick(at screenPoint: NSPoint) -> Bool {
@@ -171,6 +231,7 @@ public final class NotchOverlayWindowController {
         newPanel.level = .statusBar
         newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         newPanel.ignoresMouseEvents = false
+        newPanel.acceptsMouseMovedEvents = true
 
         let container = NotchContainerView(coordinator: NotchCoordinator.shared)
         let hosting = NSHostingView(rootView: container)

@@ -53,6 +53,7 @@ public final class RecordingCoordinator: NSObject, AreaSelectionOverlayDelegate 
 
     /// Stops the active recording session.
     public func stopRecording(completion: ((Result<URL, Error>) -> Void)? = nil) {
+        LiveActivityCoordinator.shared.stopRecordingActivity()
         Task {
             do {
                 let savedURL = try await ScreenRecordingEngine.shared.stopRecording()
@@ -69,12 +70,14 @@ public final class RecordingCoordinator: NSObject, AreaSelectionOverlayDelegate 
     }
 
     private func executeStart(config: RecordingConfiguration, completion: ((Result<URL, Error>) -> Void)?) {
+        LiveActivityCoordinator.shared.startRecordingActivity()
         Task {
             do {
                 let outputURL = try await ScreenRecordingEngine.shared.startRecording(configuration: config)
                 self.activeOutputURL = outputURL
                 completion?(.success(outputURL))
             } catch {
+                LiveActivityCoordinator.shared.stopRecordingActivity()
                 completion?(.failure(error))
             }
         }

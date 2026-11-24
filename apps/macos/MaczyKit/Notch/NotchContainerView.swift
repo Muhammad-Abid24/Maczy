@@ -12,6 +12,7 @@ public struct NotchContainerView: View {
     @ObservedObject var windowSnapManager: WindowSnapManager = .shared
     @ObservedObject var twsCoordinator: TWSNotchCoordinator = .shared
     @State private var isHovered: Bool = false
+    @State private var collapseTask: Task<Void, Never>? = nil
 
     public init(coordinator: NotchCoordinator) {
         self.coordinator = coordinator
@@ -44,9 +45,29 @@ public struct NotchContainerView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: isExpanded)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasActiveNotification)
         .onHover { hovering in
             isHovered = hovering
+            collapseTask?.cancel()
+            if hovering {
+                if coordinator.expansionState != .expanded {
+                    coordinator.setExpansionState(.expanded)
+                }
+            } else {
+                collapseTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    if !Task.isCancelled && !isHovered {
+                        coordinator.setExpansionState(.compact)
+                    }
+                }
+            }
         }
+    }
+
+    private var hasActiveNotification: Bool {
+        systemHUD.activeHUD != nil ||
+        twsCoordinator.activeConnectionToast != nil ||
+        liveCoordinator.primaryActivity != nil
     }
 
     // MARK: - Compact State View
@@ -54,102 +75,114 @@ public struct NotchContainerView: View {
         Button(action: {
             coordinator.toggleExpansion()
         }) {
-            HStack(spacing: 8) {
-                if let hud = systemHUD.activeHUD {
-                    // System HUD Level Toast (Volume or Brightness)
-                    HStack(spacing: 8) {
-                        Image(systemName: hud.iconName)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(MaczyDesignTokens.brandLavender)
+            if hasActiveNotification {
+                // MARK: - Enlarged Dynamic Notch Notification / HUD Banner (Matching user attachment)
+                VStack(spacing: 0) {
+                    // Space for hardware camera notch cutout at the top
+                    Spacer(minLength: 0)
 
-                        // Progress fill bar
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.2))
-                                    .frame(height: 5)
-                                Capsule()
-                                    .fill(MaczyDesignTokens.brandPurple)
-                                    .frame(width: max(0, geo.size.width * CGFloat(hud.level)), height: 5)
-                            }
-                            .frame(maxHeight: .infinity, alignment: .center)
-                        }
-
-                        Text("\(hud.percentage)%")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black.opacity(0.95))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(MaczyDesignTokens.brandPurple.opacity(0.4), lineWidth: 1))
-
-                } else if let tws = twsCoordinator.activeConnectionToast {
-                    // AirPods / TWS Connection Toast Pill
-                    HStack(spacing: 8) {
-                        Image(systemName: tws.type.iconName)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(MaczyDesignTokens.statusGreen)
-
-                        Text(tws.name)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-
-                        if let battery = tws.battery {
-                            Text(battery.summaryText)
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white.opacity(0.85))
-                        }
-
-                        Spacer()
-
-                        Circle()
-                            .fill(MaczyDesignTokens.statusGreen)
-                            .frame(width: 5, height: 5)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black.opacity(0.95))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(MaczyDesignTokens.statusGreen.opacity(0.4), lineWidth: 1))
-
-                } else if let activity = liveCoordinator.primaryActivity {
-                    // Live Activity or Notification Pill
-                    HStack(spacing: 8) {
-                        Image(systemName: activity.iconName)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.statusOrange)
-
-                        Text(activity.title)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-
-                        if !activity.formattedTimer.isEmpty {
-                            Text(activity.formattedTimer)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    // Notification banner row positioned at the bottom of the enlarged notch
+                    if let hud = systemHUD.activeHUD {
+                        HStack(spacing: 12) {
+                            Image(systemName: hud.iconName)
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.white)
-                        } else if !activity.formattedRecording.isEmpty {
-                            Text(activity.formattedRecording)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(MaczyDesignTokens.statusRed)
-                        } else {
-                            Text(activity.message)
-                                .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(1)
+                                .frame(width: 24, alignment: .leading)
+
+                            // Capsule progress bar
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.22))
+                                        .frame(height: 7)
+                                    Capsule()
+                                        .fill(Color.white)
+                                        .frame(width: max(0, geo.size.width * CGFloat(hud.level)), height: 7)
+                                }
+                                .frame(maxHeight: .infinity, alignment: .center)
+                            }
+                            .frame(height: 14)
+
+                            Text("\(hud.percentage)%")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .frame(minWidth: 38, alignment: .trailing)
                         }
+                        .padding(.horizontal, 26)
+                        .padding(.bottom, 12)
 
-                        Spacer()
+                    } else if let tws = twsCoordinator.activeConnectionToast {
+                        HStack(spacing: 10) {
+                            Image(systemName: tws.type.iconName)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(MaczyDesignTokens.statusGreen)
+                                .frame(width: 24, alignment: .leading)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(tws.name)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                if let battery = tws.battery {
+                                    Text(battery.summaryText)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+
+                            Spacer(minLength: 4)
+
+                            Circle()
+                                .fill(MaczyDesignTokens.statusGreen)
+                                .frame(width: 6, height: 6)
+                        }
+                        .padding(.horizontal, 26)
+                        .padding(.bottom, 12)
+
+                    } else if let activity = liveCoordinator.primaryActivity {
+                        HStack(spacing: 10) {
+                            Image(systemName: activity.iconName)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.brandLavender)
+                                .frame(width: 24, alignment: .leading)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(activity.title)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Text(activity.message)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .lineLimit(1)
+                            }
+
+                            Spacer(minLength: 4)
+
+                            if !activity.formattedTimer.isEmpty {
+                                Text(activity.formattedTimer)
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                            } else if !activity.formattedRecording.isEmpty {
+                                Text(activity.formattedRecording)
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .foregroundColor(MaczyDesignTokens.statusRed)
+                            }
+                        }
+                        .padding(.horizontal, 26)
+                        .padding(.bottom, 12)
                     }
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black.opacity(0.95))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
-
-                } else if mediaCoordinator.isMediaActive {
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+                .clipShape(DynamicNotchShape(
+                    cornerRadius: 22,
+                    earRadius: profile.hasPhysicalNotch ? 14 : 0,
+                    hasEars: profile.hasPhysicalNotch
+                ))
+            } else {
+                // MARK: - Regular Compact Idle State
+                if mediaCoordinator.isMediaActive {
                     // Now Playing compact pill
                     HStack(spacing: 8) {
                         Image(systemName: mediaCoordinator.currentTrack.isPlaying ? "waveform" : "pause.fill")
@@ -203,16 +236,13 @@ public struct NotchContainerView: View {
 
                 } else {
                     // Physical Notch Integration
-                    HStack {
-                        Spacer()
-                        Circle()
-                            .fill(MaczyDesignTokens.brandPurple)
-                            .frame(width: 6, height: 6)
-                            .padding(.trailing, 8)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
-                    .clipShape(RoundedCornerShape(radius: 12, corners: [.bottomLeft, .bottomRight]))
+                    Color.black
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(DynamicNotchShape(
+                            cornerRadius: 12,
+                            earRadius: 10,
+                            hasEars: true
+                        ))
                 }
             }
         }
@@ -391,10 +421,14 @@ public struct NotchContainerView: View {
                 .cornerRadius(10)
             }
 
-            // MARK: - Live Activities Section
-            if !liveCoordinator.activities.isEmpty {
+            // MARK: - Live Activities Section (Excludes screen recording which is managed via Quick Action button)
+            let activeLiveCards = liveCoordinator.activities.filter {
+                if case .screenRecording = $0.type { return false }
+                return true
+            }
+            if !activeLiveCards.isEmpty {
                 VStack(spacing: 6) {
-                    ForEach(liveCoordinator.activities) { act in
+                    ForEach(activeLiveCards) { act in
                         HStack(spacing: 10) {
                             Image(systemName: act.iconName)
                                 .font(.system(size: 12, weight: .semibold))
@@ -453,11 +487,15 @@ public struct NotchContainerView: View {
                 }
 
                 NotchActionButton(
-                    icon: "record.circle",
-                    title: "Record Display",
+                    icon: appState.isRecordingScreen ? "stop.circle.fill" : "record.circle",
+                    title: appState.isRecordingScreen ? "Stop" : "Record Display",
                     color: MaczyDesignTokens.statusRed
                 ) {
-                    _ = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: false))
+                    if appState.isRecordingScreen {
+                        _ = appState.dispatch(.stopScreenRecording)
+                    } else {
+                        _ = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: false))
+                    }
                 }
 
                 NotchActionButton(
@@ -558,15 +596,16 @@ public struct NotchContainerView: View {
                     .foregroundColor(.white.opacity(0.4))
             }
         }
-        .padding(14)
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous))
-        .overlay(
-            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 12, x: 0, y: 6)
+        .clipShape(DynamicNotchShape(
+            cornerRadius: 22,
+            earRadius: profile.hasPhysicalNotch ? 14 : 0,
+            hasEars: profile.hasPhysicalNotch
+        ))
     }
 }
 
@@ -629,6 +668,85 @@ struct RoundedCornerShape: Shape {
             path.addLine(to: p4)
         }
 
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Dynamic Notch Shape supporting native Apple top ear flares and smooth bottom continuous curves.
+public struct DynamicNotchShape: Shape {
+    public var cornerRadius: CGFloat = 20
+    public var earRadius: CGFloat = 12
+    public var hasEars: Bool = true
+
+    public init(cornerRadius: CGFloat = 20, earRadius: CGFloat = 12, hasEars: Bool = true) {
+        self.cornerRadius = cornerRadius
+        self.earRadius = earRadius
+        self.hasEars = hasEars
+    }
+
+    public func path(in rect: CGRect) -> Path {
+        if !hasEars {
+            return Path(roundedRect: rect, cornerRadius: cornerRadius, style: .continuous)
+        }
+        var path = Path()
+        let topY = rect.minY
+        let bottomY = rect.maxY
+        let leftX = rect.minX
+        let rightX = rect.maxX
+        let ear = min(earRadius, max(0, (rightX - leftX) / 6.0))
+        let corner = min(cornerRadius, max(0, (rightX - leftX) / 4.0))
+
+        // Top-left corner on top bezel
+        path.move(to: CGPoint(x: leftX, y: topY))
+
+        // Top-left concave ear flare (starts horizontal at top bezel, curves smoothly into vertical side)
+        path.addArc(
+            center: CGPoint(x: leftX, y: topY + ear),
+            radius: ear,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+
+        // Down left side
+        path.addLine(to: CGPoint(x: leftX + ear, y: bottomY - corner))
+
+        // Bottom-left rounded corner
+        path.addArc(
+            center: CGPoint(x: leftX + ear + corner, y: bottomY - corner),
+            radius: corner,
+            startAngle: .degrees(180),
+            endAngle: .degrees(90),
+            clockwise: true
+        )
+
+        // Across bottom edge
+        path.addLine(to: CGPoint(x: rightX - ear - corner, y: bottomY))
+
+        // Bottom-right rounded corner
+        path.addArc(
+            center: CGPoint(x: rightX - ear - corner, y: bottomY - corner),
+            radius: corner,
+            startAngle: .degrees(90),
+            endAngle: .degrees(0),
+            clockwise: true
+        )
+
+        // Up right side
+        path.addLine(to: CGPoint(x: rightX - ear, y: topY + ear))
+
+        // Top-right concave ear flare (starts vertical from right side, curves smoothly into horizontal top bezel)
+        path.addArc(
+            center: CGPoint(x: rightX, y: topY + ear),
+            radius: ear,
+            startAngle: .degrees(180),
+            endAngle: .degrees(270),
+            clockwise: false
+        )
+
+        // Across top bezel back to start
+        path.addLine(to: CGPoint(x: leftX, y: topY))
         path.closeSubpath()
         return path
     }

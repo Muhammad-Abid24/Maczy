@@ -346,6 +346,13 @@ public final class NotchCoordinator: ObservableObject {
             .sink { [weak self] isAudioActive in
                 self?.handleAudioActivityStateChanged(isAudioActive)
             }
+
+        // Start system notification monitoring outside unit test runner
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+           ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+           NSClassFromString("XCTestCase") == nil {
+            SystemNotificationObserver.shared.startObserving()
+        }
     }
 
     public func handleAudioActivityStateChanged(_ isAudioActive: Bool) {

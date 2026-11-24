@@ -61,6 +61,7 @@ public final class SystemHUDCoordinator: ObservableObject {
     @Published public private(set) var currentVolume: Double = 0.5
     @Published public private(set) var isVolumeMuted: Bool = false
     @Published public private(set) var currentBrightness: Double = 0.75
+    @Published public private(set) var isNativeOSDSuppressed: Bool = false
 
     public let audioController: SystemAudioControllerProtocol
     public let displayController: SystemDisplayControllerProtocol
@@ -91,10 +92,44 @@ public final class SystemHUDCoordinator: ObservableObject {
 
     deinit {
         dismissTimer?.invalidate()
+        Self.applyNativeOSDSuppression(false)
+    }
+
+    /// Suppress or restore native macOS Volume/Brightness square bezel HUD overlay (OSDUIHelper).
+    public func setNativeOSDSuppressed(_ suppressed: Bool) {
+        self.isNativeOSDSuppressed = suppressed
+        Self.applyNativeOSDSuppression(suppressed)
+    }
+
+    /// Nonisolated worker applying launchctl disable/enable command.
+    public nonisolated static func applyNativeOSDSuppression(_ suppressed: Bool) {
+        // Skip system service changes during automated test execution
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+              ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+              NSClassFromString("XCTestCase") == nil else {
+            return
+        }
+
+        let uid = getuid()
+        let action = suppressed ? "disable" : "enable"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        proc.arguments = [action, "gui/\(uid)/com.apple.OSDUIHelper"]
+        try? proc.run()
+        proc.waitUntilExit()
+
+        if suppressed {
+            let killProc = Process()
+            killProc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            killProc.arguments = ["OSDUIHelper"]
+            try? killProc.run()
+            killProc.waitUntilExit()
+        }
     }
 
     /// Begin observing real-time system hardware changes from CoreAudio and DisplayServices.
     public func startHardwareObservation() {
+        setNativeOSDSuppressed(true)
         audioController.startObserving { [weak self] vol, muted in
             if Thread.isMainThread {
                 MainActor.assumeIsolated {
@@ -126,6 +161,7 @@ public final class SystemHUDCoordinator: ObservableObject {
 
     /// Stop observing hardware changes.
     public func stopHardwareObservation() {
+        setNativeOSDSuppressed(false)
         audioController.stopObserving()
         displayController.stopObserving()
     }

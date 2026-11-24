@@ -1,0 +1,344 @@
+import Foundation
+import AppKit
+import SQLite3
+import Combine
+
+/// Payload representing a captured macOS system notification.
+public struct SystemNotificationPayload: Sendable, Equatable {
+    public let recId: Int64
+    public let bundleIdentifier: String
+    public let title: String
+    public let subtitle: String
+    public let body: String
+    public let date: Date
+
+    public init(
+        recId: Int64,
+        bundleIdentifier: String,
+        title: String,
+        subtitle: String = "",
+        body: String,
+        date: Date = Date()
+    ) {
+        self.recId = recId
+        self.bundleIdentifier = bundleIdentifier
+        self.title = title
+        self.subtitle = subtitle
+        self.body = body
+        self.date = date
+    }
+
+    /// Best display title, falling back to subtitle or application name.
+    public var displayTitle: String {
+        if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return title
+        }
+        if !subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return subtitle
+        }
+        let components = bundleIdentifier.split(separator: ".")
+        if let last = components.last, !last.isEmpty {
+            return String(last).capitalized
+        }
+        return "Notification"
+    }
+
+    /// Best display message body.
+    public var displayMessage: String {
+        if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return body
+        }
+        return subtitle
+    }
+
+    /// Best SF Symbol icon for the application.
+    public var fallbackIconName: String {
+        let id = bundleIdentifier.lowercased()
+        if id.contains("telegram") {
+            return "paperplane.fill"
+        } else if id.contains("whatsapp") {
+            return "message.fill"
+        } else if id.contains("mail") {
+            return "envelope.fill"
+        } else if id.contains("slack") {
+            return "bubble.left.and.bubble.right.fill"
+        } else if id.contains("calendar") {
+            return "calendar"
+        } else if id.contains("reminder") {
+            return "checklist"
+        } else if id.contains("message") || id.contains("chat") {
+            return "message.fill"
+        } else {
+            return "bell.fill"
+        }
+    }
+}
+
+/// Protocol defining system notification monitoring and redirection to Dynamic Notch.
+public protocol SystemNotificationObserverProtocol: AnyObject, Sendable {
+    func startObserving()
+    func stopObserving()
+    var isObserving: Bool { get }
+}
+
+/// Real-time observer monitoring the macOS `usernoted` SQLite database and diverting
+/// incoming system notifications to Maczy's Dynamic Notch while suppressing the native banner.
+public final class SystemNotificationObserver: SystemNotificationObserverProtocol, @unchecked Sendable {
+    public static let shared = SystemNotificationObserver()
+
+    private let dbPath: String
+    private let queue = DispatchQueue(label: "com.maczy.system-notifications", qos: .userInteractive)
+    private let lock = NSLock()
+
+    private var _isObserving = false
+    public var isObserving: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isObserving
+    }
+
+    public var isSuppressionEnabled: Bool = true
+    private var lastSeenRecId: Int64 = 0
+    private var pollTimer: DispatchSourceTimer?
+    private var fsSource: DispatchSourceFileSystemObject?
+    private var fileDescriptor: Int32 = -1
+
+    public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
+
+    public init(databasePath: String? = nil, initialRecId: Int64? = nil) {
+        if let customPath = databasePath {
+            self.dbPath = customPath
+        } else {
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            self.dbPath = home.appendingPathComponent("Library/Group Containers/group.com.apple.usernoted/db2/db").path
+        }
+        if let recId = initialRecId {
+            self.lastSeenRecId = recId
+        }
+    }
+
+    deinit {
+        stopObserving()
+    }
+
+    /// Parse a raw binary PropertyList BLOB from `usernoted.record.data`.
+    public static func parseRecord(
+        data: Data,
+        recId: Int64,
+        bundleIdentifier: String,
+        deliveredDate: Double
+    ) -> SystemNotificationPayload? {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
+            return nil
+        }
+
+        let req = plist["req"] as? [String: Any] ?? plist
+        let title = (req["titl"] as? String) ?? ""
+        let subtitle = (req["subt"] as? String) ?? ""
+        let body = (req["body"] as? String) ?? ""
+
+        guard !title.isEmpty || !subtitle.isEmpty || !body.isEmpty else {
+            return nil
+        }
+
+        let date = deliveredDate > 0 ? Date(timeIntervalSinceReferenceDate: deliveredDate) : Date()
+        return SystemNotificationPayload(
+            recId: recId,
+            bundleIdentifier: bundleIdentifier,
+            title: title,
+            subtitle: subtitle,
+            body: body,
+            date: date
+        )
+    }
+
+    /// Dismiss native top-right macOS notification banner by terminating `com.apple.notificationcenterui`.
+    public static func dismissNativeNotificationBanner() {
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui")
+        for app in runningApps {
+            app.terminate()
+        }
+    }
+
+    /// Start real-time monitoring of macOS notifications.
+    public func startObserving() {
+        startObserving(seedMaxId: true)
+    }
+
+    /// Start real-time monitoring of macOS notifications with optional initial rec_id seeding.
+    public func startObserving(seedMaxId: Bool) {
+        lock.lock()
+        guard !_isObserving else {
+            lock.unlock()
+            return
+        }
+        _isObserving = true
+        lock.unlock()
+
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            if seedMaxId {
+                self.seedLastSeenRecId()
+            }
+            self.setupFileSystemWatcher()
+            self.setupPollingTimer()
+        }
+    }
+
+    /// Stop monitoring notifications.
+    public func stopObserving() {
+        lock.lock()
+        guard _isObserving else {
+            lock.unlock()
+            return
+        }
+        _isObserving = false
+        lock.unlock()
+
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.pollTimer?.cancel()
+            self.pollTimer = nil
+
+            if let fs = self.fsSource {
+                fs.cancel()
+                self.fsSource = nil
+            }
+            if self.fileDescriptor >= 0 {
+                close(self.fileDescriptor)
+                self.fileDescriptor = -1
+            }
+        }
+    }
+
+    private func seedLastSeenRecId() {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK, let db = db else {
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        let sql = "SELECT MAX(rec_id) FROM record"
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                let maxId = sqlite3_column_int64(stmt, 0)
+                self.lastSeenRecId = maxId
+            }
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    private func setupPollingTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 0.35, repeating: 0.35, leeway: .milliseconds(50))
+        timer.setEventHandler { [weak self] in
+            self?.checkForNewNotifications()
+        }
+        timer.resume()
+        self.pollTimer = timer
+    }
+
+    private func setupFileSystemWatcher() {
+        let dirPath = (dbPath as NSString).deletingLastPathComponent
+        let fd = open(dirPath, O_EVTONLY)
+        guard fd >= 0 else { return }
+        self.fileDescriptor = fd
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .extend, .attrib],
+            queue: queue
+        )
+        source.setEventHandler { [weak self] in
+            self?.checkForNewNotifications()
+        }
+        source.setCancelHandler {
+            close(fd)
+        }
+        source.resume()
+        self.fsSource = source
+    }
+
+    /// Query SQLite for any notification records inserted after `lastSeenRecId`.
+    public func checkForNewNotifications() {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK, let db = db else {
+            return
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        let sql = "SELECT r.rec_id, a.identifier, r.data, r.delivered_date FROM record r JOIN app a ON r.app_id = a.app_id WHERE r.rec_id > ? ORDER BY r.rec_id ASC"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt = stmt else {
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_int64(stmt, 1, lastSeenRecId)
+
+        var newNotifications: [SystemNotificationPayload] = []
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let recId = sqlite3_column_int64(stmt, 0)
+            let appStr: String
+            if let cStr = sqlite3_column_text(stmt, 1) {
+                appStr = String(cString: cStr)
+            } else {
+                appStr = "com.apple.unknown"
+            }
+
+            let blobBytes = sqlite3_column_blob(stmt, 2)
+            let blobSize = sqlite3_column_bytes(stmt, 2)
+            let deliveredDate = sqlite3_column_double(stmt, 3)
+
+            if recId > lastSeenRecId {
+                lastSeenRecId = recId
+            }
+
+            if let blobBytes = blobBytes, blobSize > 0 {
+                let data = Data(bytes: blobBytes, count: Int(blobSize))
+                if let payload = Self.parseRecord(
+                    data: data,
+                    recId: recId,
+                    bundleIdentifier: appStr,
+                    deliveredDate: deliveredDate
+                ) {
+                    newNotifications.append(payload)
+                }
+            }
+        }
+
+        guard !newNotifications.isEmpty else { return }
+
+        for payload in newNotifications {
+            dispatchNotification(payload)
+        }
+    }
+
+    private func dispatchNotification(_ payload: SystemNotificationPayload) {
+        // 1. Notify callback if provided
+        onNotificationReceived?(payload)
+
+        // 2. Route directly to Dynamic Notch Live Activities on MainActor
+        DispatchQueue.main.async {
+            LiveActivityCoordinator.shared.postNotification(
+                id: "sysnotif-\(payload.recId)",
+                title: payload.displayTitle,
+                message: payload.displayMessage,
+                appIcon: payload.fallbackIconName,
+                bundleIdentifier: payload.bundleIdentifier,
+                durationSeconds: 4.5
+            )
+        }
+
+        // 3. Suppress native macOS notification banner
+        if isSuppressionEnabled {
+            Self.dismissNativeNotificationBanner()
+            // Secondary sweep after 40ms to catch any delayed banner frame
+            queue.asyncAfter(deadline: .now() + 0.04) {
+                Self.dismissNativeNotificationBanner()
+            }
+        }
+    }
+}

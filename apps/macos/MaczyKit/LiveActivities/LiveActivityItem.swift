@@ -5,7 +5,7 @@ public enum LiveActivityType: Sendable, Equatable {
     case timer(totalSeconds: Int, remainingSeconds: Int, isRunning: Bool)
     case screenRecording(elapsedSeconds: Int)
     case taskProgress(progress: Double, status: String)
-    case notification(title: String, message: String, appIcon: String)
+    case notification(title: String, message: String, appIcon: String, bundleIdentifier: String? = nil)
 }
 
 /// Dynamic live activity widget entity.
@@ -63,9 +63,17 @@ public struct LiveActivityItem: Identifiable, Sendable, Equatable {
             return "record.circle.fill"
         case .taskProgress:
             return "arrow.down.circle.fill"
-        case .notification(_, _, let appIcon):
+        case .notification(_, _, let appIcon, _):
             return appIcon
         }
+    }
+
+    /// Application bundle identifier if this is an app notification.
+    public var bundleIdentifier: String? {
+        if case .notification(_, _, _, let bundleId) = type {
+            return bundleId
+        }
+        return nil
     }
 
     /// Short title string for compact display.
@@ -77,7 +85,7 @@ public struct LiveActivityItem: Identifiable, Sendable, Equatable {
             return "Recording"
         case .taskProgress(_, let status):
             return status
-        case .notification(let title, _, _):
+        case .notification(let title, _, _, _):
             return title
         }
     }
@@ -91,7 +99,7 @@ public struct LiveActivityItem: Identifiable, Sendable, Equatable {
             return "\(elapsed)s elapsed"
         case .taskProgress(let progress, _):
             return "\(Int(progress * 100))%"
-        case .notification(_, let msg, _):
+        case .notification(_, let msg, _, _):
             return msg
         }
     }

@@ -140,11 +140,20 @@ public struct NotchContainerView: View {
                         .padding(.bottom, 12)
 
                     } else if let activity = liveCoordinator.primaryActivity {
-                        HStack(spacing: 10) {
-                            Image(systemName: activity.iconName)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.brandLavender)
-                                .frame(width: 24, alignment: .leading)
+                        HStack(spacing: 12) {
+                            if let bundleId = activity.bundleIdentifier,
+                               let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: appUrl.path))
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 22, height: 22)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                            } else {
+                                Image(systemName: activity.iconName)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.brandLavender)
+                                    .frame(width: 24, alignment: .leading)
+                            }
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(activity.title)
@@ -153,8 +162,8 @@ public struct NotchContainerView: View {
                                     .lineLimit(1)
                                 Text(activity.message)
                                     .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.8))
-                                    .lineLimit(1)
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .lineLimit(2)
                             }
 
                             Spacer(minLength: 4)

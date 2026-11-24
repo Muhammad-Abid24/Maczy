@@ -233,7 +233,9 @@ public final class SmartUnlockKeychain: @unchecked Sendable {
 public final class CameraFaceCaptureEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     public weak var manager: FaceUnlockManager?
     public private(set) var captureSession: AVCaptureSession?
+    public private(set) var previewLayer: AVCaptureVideoPreviewLayer?
     private let captureQueue = DispatchQueue(label: "com.maczy.faceunlock.capture", qos: .userInteractive)
+    private let sessionQueue = DispatchQueue(label: "com.maczy.faceunlock.session", qos: .userInitiated)
     private var isConfigured = false
 
     // Liveness sliding window tracking
@@ -250,9 +252,11 @@ public final class CameraFaceCaptureEngine: NSObject, AVCaptureVideoDataOutputSa
         guard !isConfigured else { return captureSession != nil }
 
         let session = AVCaptureSession()
+        session.beginConfiguration()
         session.sessionPreset = .high
 
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) ?? AVCaptureDevice.default(for: .video) else {
+            session.commitConfiguration()
             return false
         }
 
@@ -261,6 +265,7 @@ public final class CameraFaceCaptureEngine: NSObject, AVCaptureVideoDataOutputSa
             if session.canAddInput(input) {
                 session.addInput(input)
             } else {
+                session.commitConfiguration()
                 return false
             }
 
@@ -271,13 +276,21 @@ public final class CameraFaceCaptureEngine: NSObject, AVCaptureVideoDataOutputSa
             if session.canAddOutput(output) {
                 session.addOutput(output)
             } else {
+                session.commitConfiguration()
                 return false
             }
+
+            let preview = AVCaptureVideoPreviewLayer(session: session)
+            preview.videoGravity = .resizeAspectFill
+            self.previewLayer = preview
+
+            session.commitConfiguration()
 
             self.captureSession = session
             self.isConfigured = true
             return true
         } catch {
+            session.commitConfiguration()
             return false
         }
     }
@@ -287,15 +300,19 @@ public final class CameraFaceCaptureEngine: NSObject, AVCaptureVideoDataOutputSa
             _ = configureSession()
         }
         guard let session = captureSession, !session.isRunning else { return }
-        captureQueue.async {
-            session.startRunning()
+        sessionQueue.async {
+            if !session.isRunning {
+                session.startRunning()
+            }
         }
     }
 
     public func stop() {
         guard let session = captureSession, session.isRunning else { return }
-        captureQueue.async {
-            session.stopRunning()
+        sessionQueue.async {
+            if session.isRunning {
+                session.stopRunning()
+            }
         }
     }
 
@@ -954,12 +971,19 @@ public final class FaceUnlockManager: NSObject, ObservableObject {
     }
 }
 
-/// SwiftUI wrapper for displaying the live AVCaptureVideoPreviewLayer
+/// SwiftUI wrapper for displaying the live AVCaptureVideoPreviewLayer safely
 public struct CameraPreviewView: NSViewRepresentable {
+    public let engine: CameraFaceCaptureEngine?
     public let session: AVCaptureSession?
 
     public init(session: AVCaptureSession?) {
         self.session = session
+        self.engine = nil
+    }
+
+    public init(engine: CameraFaceCaptureEngine) {
+        self.engine = engine
+        self.session = engine.captureSession
     }
 
     public func makeNSView(context: Context) -> NSView {
@@ -967,7 +991,13 @@ public struct CameraPreviewView: NSViewRepresentable {
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.black.cgColor
 
-        if let session = session {
+        if let previewLayer = engine?.previewLayer {
+            if previewLayer.superlayer == nil {
+                view.layer?.addSublayer(previewLayer)
+            }
+            previewLayer.frame = view.bounds
+            previewLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        } else if let session = session {
             let previewLayer = AVCaptureVideoPreviewLayer(session: session)
             previewLayer.videoGravity = .resizeAspectFill
             previewLayer.frame = view.bounds
@@ -979,13 +1009,11 @@ public struct CameraPreviewView: NSViewRepresentable {
     }
 
     public func updateNSView(_ nsView: NSView, context: Context) {
-        if let sublayers = nsView.layer?.sublayers {
-            for layer in sublayers {
-                if let previewLayer = layer as? AVCaptureVideoPreviewLayer {
-                    previewLayer.session = session
-                    previewLayer.frame = nsView.bounds
-                }
+        if let previewLayer = engine?.previewLayer {
+            if previewLayer.superlayer == nil {
+                nsView.layer?.addSublayer(previewLayer)
             }
+            previewLayer.frame = nsView.bounds
         }
     }
 }

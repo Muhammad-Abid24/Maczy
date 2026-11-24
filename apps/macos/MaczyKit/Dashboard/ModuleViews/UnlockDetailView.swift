@@ -268,7 +268,7 @@ public struct UnlockDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         ZStack(alignment: .bottomLeading) {
                             if faceManager.isCameraActive {
-                                CameraPreviewView(session: faceManager.captureEngine.captureSession)
+                                CameraPreviewView(engine: faceManager.captureEngine)
                                     .frame(height: 180)
                                     .cornerRadius(8)
                                     .clipped()

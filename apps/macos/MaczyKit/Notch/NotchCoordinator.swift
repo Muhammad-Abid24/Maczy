@@ -432,7 +432,11 @@ public final class NotchCoordinator: ObservableObject {
     /// Set explicit expansion state with animated window adjustment.
     public func setExpansionState(_ state: NotchExpansionState) {
         self.expansionState = state
-        windowController.animateToState(state, profile: activeProfile)
+        if state == .compact && isNotificationActive {
+            windowController.animateToNotificationSize(profile: activeProfile)
+        } else {
+            windowController.animateToState(state, profile: activeProfile)
+        }
     }
 
     /// Show or hide the physical/virtual notch overlay panel.

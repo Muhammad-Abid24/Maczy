@@ -78,11 +78,14 @@ final class RecordingTests: XCTestCase {
         let startResult = appState.dispatch(.startScreenRecording(target: "display", systemAudio: false, microphone: false))
         XCTAssertTrue(startResult.ok)
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .running)
+        XCTAssertTrue(appState.isRecordingScreen)
+        XCTAssertEqual(LiveActivityCoordinator.shared.primaryActivity?.title, "Recording")
 
         // Stop recording
         let stopResult = appState.dispatch(.stopScreenRecording)
         XCTAssertTrue(stopResult.ok)
         XCTAssertEqual(appState.status(for: .captureAndRecording)?.runtimeState, .idle)
+        XCTAssertFalse(appState.isRecordingScreen)
     }
 
     func testRecordingPreviewHUDPresentationAndDismiss() {

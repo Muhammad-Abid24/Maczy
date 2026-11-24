@@ -12,6 +12,7 @@ public struct NotchContainerView: View {
     @ObservedObject var windowSnapManager: WindowSnapManager = .shared
     @ObservedObject var twsCoordinator: TWSNotchCoordinator = .shared
     @State private var isHovered: Bool = false
+    @State private var collapseTask: Task<Void, Never>? = nil
 
     public init(coordinator: NotchCoordinator) {
         self.coordinator = coordinator
@@ -47,6 +48,19 @@ public struct NotchContainerView: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasActiveNotification)
         .onHover { hovering in
             isHovered = hovering
+            collapseTask?.cancel()
+            if hovering {
+                if coordinator.expansionState != .expanded {
+                    coordinator.setExpansionState(.expanded)
+                }
+            } else {
+                collapseTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    if !Task.isCancelled && !isHovered {
+                        coordinator.setExpansionState(.compact)
+                    }
+                }
+            }
         }
     }
 
@@ -476,11 +490,15 @@ public struct NotchContainerView: View {
                 }
 
                 NotchActionButton(
-                    icon: "record.circle",
-                    title: "Record Display",
+                    icon: appState.isRecordingScreen ? "stop.circle.fill" : "record.circle",
+                    title: appState.isRecordingScreen ? "Stop" : "Record Display",
                     color: MaczyDesignTokens.statusRed
                 ) {
-                    _ = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: false))
+                    if appState.isRecordingScreen {
+                        _ = appState.dispatch(.stopScreenRecording)
+                    } else {
+                        _ = appState.dispatch(.startScreenRecording(target: "display", systemAudio: true, microphone: false))
+                    }
                 }
 
                 NotchActionButton(

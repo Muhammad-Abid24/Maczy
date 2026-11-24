@@ -28,6 +28,7 @@ public final class AppState: ObservableObject {
     @Published public var lastCapturedImage: CGImage?
     @Published public var lastRecordedVideoURL: URL?
     @Published public var lastRecordedVideoThumbnail: CGImage?
+    @Published public var isRecordingScreen: Bool = false
     private var explicitlySetPermissions: Set<MaczyPermission> = []
     private var lastDispatchedActions: [String: Date] = [:]
     public var debounceInterval: TimeInterval
@@ -257,13 +258,18 @@ public final class AppState: ObservableObject {
 
         case .startScreenRecording(let target, let sysAudio, let mic):
             let msg = "Recording \(target) (audio: sys=\(sysAudio), mic=\(mic))"
+            self.isRecordingScreen = true
+            LiveActivityCoordinator.shared.startRecordingActivity()
             transitionRuntime(moduleId: moduleId, to: .running, message: msg)
             RecordingCoordinator.shared.startRecording(target: target, systemAudio: sysAudio, microphone: mic) { [weak self] res in
                 Task { @MainActor in
                     switch res {
                     case .success(let url):
+                        self?.isRecordingScreen = true
                         self?.transitionRuntime(moduleId: moduleId, to: .running, message: "Recording to \(url.lastPathComponent)")
                     case .failure(let err):
+                        self?.isRecordingScreen = false
+                        LiveActivityCoordinator.shared.stopRecordingActivity()
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: err.localizedDescription)
                     }
                 }
@@ -271,15 +277,19 @@ public final class AppState: ObservableObject {
             result = CommandResult.success(message: msg)
 
         case .stopScreenRecording:
+            self.isRecordingScreen = false
+            LiveActivityCoordinator.shared.stopRecordingActivity()
             transitionRuntime(moduleId: moduleId, to: .idle, message: "Finalizing MP4...")
             RecordingCoordinator.shared.stopRecording { [weak self] res in
                 Task { @MainActor in
                     switch res {
                     case .success(let url):
+                        self?.isRecordingScreen = false
                         self?.lastRecordedVideoURL = url
                         self?.lastRecordedVideoThumbnail = RecordingPreviewHUD.generateVideoThumbnail(for: url)
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: "Saved: \(url.lastPathComponent)")
                     case .failure(let err):
+                        self?.isRecordingScreen = false
                         self?.transitionRuntime(moduleId: moduleId, to: .idle, message: err.localizedDescription)
                     }
                 }

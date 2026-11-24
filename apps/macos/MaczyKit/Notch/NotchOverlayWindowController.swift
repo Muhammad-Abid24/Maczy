@@ -231,6 +231,7 @@ public final class NotchOverlayWindowController {
         newPanel.level = .statusBar
         newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         newPanel.ignoresMouseEvents = false
+        newPanel.acceptsMouseMovedEvents = true
 
         let container = NotchContainerView(coordinator: NotchCoordinator.shared)
         let hosting = NSHostingView(rootView: container)

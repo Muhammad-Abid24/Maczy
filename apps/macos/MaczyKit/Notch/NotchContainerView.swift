@@ -236,20 +236,13 @@ public struct NotchContainerView: View {
 
                 } else {
                     // Physical Notch Integration
-                    HStack {
-                        Spacer()
-                        Circle()
-                            .fill(MaczyDesignTokens.brandPurple)
-                            .frame(width: 6, height: 6)
-                            .padding(.trailing, 8)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
-                    .clipShape(DynamicNotchShape(
-                        cornerRadius: 12,
-                        earRadius: 10,
-                        hasEars: true
-                    ))
+                    Color.black
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(DynamicNotchShape(
+                            cornerRadius: 12,
+                            earRadius: 10,
+                            hasEars: true
+                        ))
                 }
             }
         }

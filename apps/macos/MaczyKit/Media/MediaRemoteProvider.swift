@@ -198,7 +198,7 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             title: parsed.title,
             artist: parsed.artist,
             album: nil,
-            isPlaying: true,
+            isPlaying: false,
             duration: nil,
             elapsedTime: nil,
             artworkIconName: parsed.icon

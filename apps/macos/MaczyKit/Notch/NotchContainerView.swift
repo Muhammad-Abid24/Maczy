@@ -840,12 +840,13 @@ struct NowPlayingEqualizerView: View {
         HStack(alignment: .center, spacing: 3) {
             ForEach(0..<4, id: \.self) { index in
                 Capsule()
-                    .fill(Color(red: 0.85, green: 0.58, blue: 0.38))
+                    .fill(Color(red: 0.85, green: 0.58, blue: 0.38).opacity(isPlaying ? 1.0 : 0.45))
                     .frame(
                         width: 3.2,
-                        height: isPlaying ? animatedHeight(for: index) : 4.0
+                        height: isPlaying ? animatedHeight(for: index) : 3.5
                     )
                     .animation(.easeInOut(duration: 0.22), value: phase)
+                    .animation(.easeInOut(duration: 0.22), value: isPlaying)
             }
         }
         .frame(height: 20)

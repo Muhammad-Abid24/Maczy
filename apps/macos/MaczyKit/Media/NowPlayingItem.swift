@@ -62,4 +62,17 @@ public struct NowPlayingItem: Sendable, Equatable {
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    /// Returns a copy of the item with the updated playback state.
+    public func withPlaying(_ isPlaying: Bool) -> NowPlayingItem {
+        NowPlayingItem(
+            title: title,
+            artist: artist,
+            album: album,
+            isPlaying: isPlaying,
+            duration: duration,
+            elapsedTime: elapsedTime,
+            artworkIconName: artworkIconName
+        )
+    }
 }

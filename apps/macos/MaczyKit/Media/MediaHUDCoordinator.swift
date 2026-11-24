@@ -11,9 +11,14 @@ public final class MediaHUDCoordinator: ObservableObject {
     @Published public private(set) var isAudioActive: Bool = false
     @Published public private(set) var isAudioPlaying: Bool = false
 
+    /// Duration after audio pauses before the activity is dismissed and the notch returns to normal (default 5 minutes).
+    public static let pausedAudioDismissalTimeout: TimeInterval = 300
+    public var customDismissalTimeout: TimeInterval? = nil
+
     private let provider: MediaRemoteProviderProtocol
     private let audioDetector: AudioOutputDetectorProtocol
     private var pollTimer: Timer?
+    private var pausedDismissalTask: Task<Void, Never>? = nil
 
     public init(
         provider: MediaRemoteProviderProtocol = NativeMediaRemoteProvider(),
@@ -32,15 +37,26 @@ public final class MediaHUDCoordinator: ObservableObject {
         let track = await provider.fetchNowPlaying()
         let audioRunning = audioDetector.isAudioOutputRunning()
 
-        if track.isPlaying {
-            self.currentTrack = track
-            self.isMediaActive = true
-            self.isAudioActive = true
-            self.isAudioPlaying = true
-        } else if audioRunning {
-            // Audio output active from browser, system, YouTube, Spotify, etc.
+        let isTrackPlaying: Bool = {
             if track != .idle && track.title != NowPlayingItem.idle.title {
-                self.currentTrack = track
+                if track.duration != nil {
+                    // Dedicated player with timeline (Music, Spotify, Mock)
+                    return track.isPlaying
+                } else {
+                    // Browser streaming audio (YouTube, web)
+                    return audioRunning
+                }
+            }
+            return audioRunning
+        }()
+
+        if isTrackPlaying {
+            // Cancel 5-minute pause timer as sound is actively playing
+            pausedDismissalTask?.cancel()
+            pausedDismissalTask = nil
+
+            if track != .idle && track.title != NowPlayingItem.idle.title {
+                self.currentTrack = track.withPlaying(true)
             } else {
                 let (appName, icon) = audioDetector.activeAudioApplicationName()
                 self.currentTrack = NowPlayingItem(
@@ -56,18 +72,46 @@ public final class MediaHUDCoordinator: ObservableObject {
             self.isMediaActive = true
             self.isAudioActive = true
             self.isAudioPlaying = true
-        } else if track != .idle && track.title != NowPlayingItem.idle.title {
-            // Paused media track
-            self.currentTrack = track
-            self.isMediaActive = true
-            self.isAudioActive = false
-            self.isAudioPlaying = false
         } else {
-            // No media or audio
-            self.currentTrack = .idle
-            self.isMediaActive = false
-            self.isAudioActive = false
+            // Audio output is stopped or paused
             self.isAudioPlaying = false
+
+            let existingTrack: NowPlayingItem? = {
+                if track != .idle && track.title != NowPlayingItem.idle.title {
+                    return track.withPlaying(false)
+                } else if self.currentTrack != .idle && self.currentTrack.title != NowPlayingItem.idle.title {
+                    return self.currentTrack.withPlaying(false)
+                }
+                return nil
+            }()
+
+            if let pausedTrack = existingTrack {
+                self.currentTrack = pausedTrack
+                self.isMediaActive = true
+                self.isAudioActive = true
+
+                // Start 5-minute pause timeout to restore notch silhouette if still paused
+                if pausedDismissalTask == nil {
+                    let timeout = customDismissalTimeout ?? Self.pausedAudioDismissalTimeout
+                    pausedDismissalTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                        guard let self = self, !Task.isCancelled else { return }
+                        if !self.isAudioPlaying {
+                            self.currentTrack = .idle
+                            self.isMediaActive = false
+                            self.isAudioActive = false
+                            self.isAudioPlaying = false
+                            self.pausedDismissalTask = nil
+                        }
+                    }
+                }
+            } else {
+                pausedDismissalTask?.cancel()
+                pausedDismissalTask = nil
+                self.currentTrack = .idle
+                self.isMediaActive = false
+                self.isAudioActive = false
+            }
         }
     }
 
@@ -75,6 +119,7 @@ public final class MediaHUDCoordinator: ObservableObject {
     public func togglePlayPause() {
         Task {
             await provider.togglePlayPause()
+            try? await Task.sleep(nanoseconds: 200_000_000)
             await refreshNowPlaying()
         }
     }

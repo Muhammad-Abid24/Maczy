@@ -268,12 +268,41 @@ final class MediaHUDTests: XCTestCase {
         XCTAssertEqual(coordinator.currentTrack.title, "Safari")
         XCTAssertEqual(coordinator.currentTrack.artist, "Audio Output")
 
-        // Simulate audio stops
+        // Simulate audio stops (pause state)
         audioMock.simulateAudioState(isRunning: false)
         await coordinator.refreshNowPlaying()
 
-        XCTAssertFalse(coordinator.isAudioActive)
+        // Track is paused: remains active in notch for resume, but spectrum is stopped and isPlaying is false
+        XCTAssertTrue(coordinator.isAudioActive)
         XCTAssertFalse(coordinator.isAudioPlaying)
+        XCTAssertFalse(coordinator.currentTrack.isPlaying)
+    }
+
+    @MainActor
+    func testMediaHUDCoordinatorFiveMinuteDismissal() async {
+        let mediaMock = MockMediaRemoteProvider(initialItem: .idle)
+        let audioMock = MockAudioOutputDetector(initialRunning: true, appName: "Safari", iconName: "safari.fill")
+        let coordinator = MediaHUDCoordinator(provider: mediaMock, audioDetector: audioMock, autoStartMonitoring: false)
+        coordinator.customDismissalTimeout = 0.05 // 50ms for unit test
+
+        await coordinator.refreshNowPlaying()
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertTrue(coordinator.isAudioPlaying)
+
+        // Audio stops (paused)
+        audioMock.simulateAudioState(isRunning: false)
+        await coordinator.refreshNowPlaying()
+
+        // Immediately paused: activity is kept in notch for quick resume, spectrum is stopped
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isAudioPlaying)
+        XCTAssertFalse(coordinator.currentTrack.isPlaying)
+
+        // After timeout elapses without resuming, activity is dismissed from notch
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertFalse(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isMediaActive)
+        XCTAssertEqual(coordinator.currentTrack, .idle)
     }
 
     @MainActor

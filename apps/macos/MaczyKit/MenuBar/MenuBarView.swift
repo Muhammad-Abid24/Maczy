@@ -21,9 +21,7 @@ public struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 0) {
             // MARK: - Header
             HStack(spacing: 8) {
-                Image(systemName: "wand.and.stars")
-                    .foregroundColor(MaczyDesignTokens.brandPurple)
-                    .font(.system(size: 14, weight: .bold))
+                MaczyAppIconView(size: 18, cornerRadius: 4)
                 Text("Maczy")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                 Text("Mac be Eazy")

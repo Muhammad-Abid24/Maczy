@@ -146,15 +146,8 @@ struct SidebarView: View {
                 appState.selectedTab = .overview
             } label: {
                 HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(MaczyDesignTokens.brandPurple)
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "wand.and.stars")
-                            .foregroundColor(.white)
-                            .font(.system(size: 18, weight: .bold))
-                    }
-                    .frame(width: appState.isSidebarExpanded ? 36 : 48)
+                    MaczyAppIconView(size: 36, cornerRadius: 8)
+                        .frame(width: appState.isSidebarExpanded ? 36 : 48)
 
                     if appState.isSidebarExpanded {
                         VStack(alignment: .leading, spacing: 1) {

@@ -15,7 +15,10 @@ let package = Package(
         .target(
             name: "MaczyKit",
             dependencies: [],
-            path: "apps/macos/MaczyKit"
+            path: "apps/macos/MaczyKit",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .executableTarget(
             name: "Maczy",

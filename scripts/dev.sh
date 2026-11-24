@@ -18,6 +18,9 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp ".build/arm64-apple-macosx/debug/Maczy" "$MACOS_DIR/Maczy"
+if [ -f "apps/macos/MaczyApp/Resources/AppIcon.icns" ]; then
+    cp "apps/macos/MaczyApp/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+fi
 
 cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -30,6 +33,10 @@ cat << 'EOF' > "$CONTENTS_DIR/Info.plist"
     <string>Maczy</string>
     <key>CFBundleExecutable</key>
     <string>Maczy</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.maczy.app</string>
     <key>CFBundleInfoDictionaryVersion</key>

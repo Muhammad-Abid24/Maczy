@@ -181,31 +181,27 @@ public struct NotchContainerView: View {
                     hasEars: profile.hasPhysicalNotch
                 ))
             } else {
-                // MARK: - Regular Compact Idle State
-                if mediaCoordinator.isMediaActive {
-                    // Now Playing compact pill
-                    HStack(spacing: 8) {
-                        Image(systemName: mediaCoordinator.currentTrack.isPlaying ? "waveform" : "pause.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(MaczyDesignTokens.brandLavender)
-
-                        Text("\(mediaCoordinator.currentTrack.artist) — \(mediaCoordinator.currentTrack.title)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                // MARK: - Regular Compact Idle / Audio State
+                if mediaCoordinator.isAudioActive && !hasActiveNotification {
+                    // Audio Playing Compact Notch (Matching user attachment media_1795551410991_f116f758.png)
+                    HStack {
+                        // Left wing: Circular album art / music icon with progress ring
+                        NowPlayingCompactArtworkRing(track: mediaCoordinator.currentTrack)
+                            .padding(.leading, profile.hasPhysicalNotch ? 16 : 12)
 
                         Spacer()
 
-                        Image(systemName: mediaCoordinator.currentTrack.artworkIconName)
-                            .font(.system(size: 10))
-                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                        // Right wing: Animated 4-bar equalizer
+                        NowPlayingEqualizerView(isPlaying: mediaCoordinator.isAudioPlaying)
+                            .padding(.trailing, profile.hasPhysicalNotch ? 16 : 12)
                     }
-                    .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black.opacity(0.92))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                    .background(Color.black)
+                    .clipShape(DynamicNotchShape(
+                        cornerRadius: 14,
+                        earRadius: profile.hasPhysicalNotch ? 12 : 0,
+                        hasEars: profile.hasPhysicalNotch
+                    ))
 
                 } else if profile.isVirtualIsland {
                     // Virtual Island Pill with Battery
@@ -773,5 +769,84 @@ private struct BatteryBadge: View {
         .padding(.vertical, 3)
         .background(Color.white.opacity(0.06))
         .cornerRadius(6)
+    }
+}
+
+/// Circular artwork with dynamic accent progress ring matching native Apple Dynamic Notch style.
+struct NowPlayingCompactArtworkRing: View {
+    let track: NowPlayingItem
+
+    var body: some View {
+        ZStack {
+            // Background subtle circular track
+            Circle()
+                .stroke(Color.white.opacity(0.18), lineWidth: 2)
+
+            // Accent progress ring (orange/amber gradient matching user screenshot)
+            Circle()
+                .trim(from: 0, to: CGFloat(track.progress > 0 ? track.progress : 0.70))
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(colors: [
+                            Color(red: 0.96, green: 0.68, blue: 0.38),
+                            Color(red: 0.88, green: 0.54, blue: 0.28)
+                        ]),
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+
+            // Inner circular thumbnail / icon container
+            ZStack {
+                Circle()
+                    .fill(Color(white: 0.12))
+
+                Image(systemName: track.artworkIconName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color(red: 0.96, green: 0.68, blue: 0.38))
+            }
+            .padding(2.5)
+        }
+        .frame(width: 24, height: 24)
+    }
+}
+
+/// Animated 4-bar equalizer waveform matching user screenshot media_1795551410991_f116f758.png.
+struct NowPlayingEqualizerView: View {
+    let isPlaying: Bool
+    @State private var phase: Double = 0.0
+
+    private let timer = Timer.publish(every: 0.22, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(0..<4, id: \.self) { index in
+                Capsule()
+                    .fill(Color(red: 0.85, green: 0.58, blue: 0.38))
+                    .frame(
+                        width: 3.2,
+                        height: isPlaying ? animatedHeight(for: index) : 4.0
+                    )
+                    .animation(.easeInOut(duration: 0.22), value: phase)
+            }
+        }
+        .frame(height: 20)
+        .onReceive(timer) { _ in
+            if isPlaying {
+                phase += 1.0
+            }
+        }
+    }
+
+    private func animatedHeight(for index: Int) -> CGFloat {
+        let pattern: [[CGFloat]] = [
+            [7, 15, 11, 16],
+            [12, 8, 17, 10],
+            [16, 14, 9, 13],
+            [9, 17, 13, 7]
+        ]
+        let step = Int(phase) % pattern.count
+        return pattern[step][index]
     }
 }

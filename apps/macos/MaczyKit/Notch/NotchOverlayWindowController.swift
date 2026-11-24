@@ -92,8 +92,32 @@ public final class NotchOverlayWindowController {
     }
 
     /// Target frame for regular compact state.
-    public func compactRect(for profile: NotchScreenProfile) -> CGRect {
+    public func compactRect(for profile: NotchScreenProfile, isAudioActive: Bool = false) -> CGRect {
+        if isAudioActive {
+            return audioCompactRect(for: profile)
+        }
         return profile.notchRect
+    }
+
+    /// Target frame for active audio playback compact state with extended wings.
+    public func audioCompactRect(for profile: NotchScreenProfile) -> CGRect {
+        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 110.0, 330.0) : 260.0
+        let targetHeight: CGFloat = profile.notchRect.height
+        let x = profile.notchRect.midX - (targetWidth / 2.0)
+        let y = profile.screenFrame.maxY - targetHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+        return CGRect(x: x, y: y, width: targetWidth, height: targetHeight)
+    }
+
+    /// Smoothly animate panel into audio playback compact size (wings on both sides).
+    public func animateToAudioCompactSize(profile: NotchScreenProfile) {
+        ensurePanelCreated()
+        guard let panel = panel else { return }
+        let targetFrame = audioCompactRect(for: profile)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.28
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }
     }
 
     /// Smoothly animate panel into enlarged notification banner size.
@@ -202,7 +226,8 @@ public final class NotchOverlayWindowController {
     private func targetRect(for state: NotchExpansionState, profile: NotchScreenProfile) -> CGRect {
         switch state {
         case .compact:
-            return profile.notchRect
+            let isAudio = MediaHUDCoordinator.shared.isAudioActive
+            return compactRect(for: profile, isAudioActive: isAudio)
         case .expanded:
             return NotchGeometry.calculateExpandedRect(
                 anchorRect: profile.notchRect,

@@ -238,4 +238,54 @@ final class MediaHUDTests: XCTestCase {
         XCTAssertNil(SystemHUDCoordinator.shared.activeHUD)
         XCTAssertFalse(coordinator.isOverlayVisible)
     }
+
+    func testAudioOutputDetectorActiveDetection() {
+        let detector = MockAudioOutputDetector(initialRunning: false, appName: "Safari", iconName: "safari.fill")
+        XCTAssertFalse(detector.isAudioOutputRunning())
+        XCTAssertEqual(detector.activeAudioApplicationName().name, "Safari")
+
+        detector.simulateAudioState(isRunning: true, appName: "Google Chrome", iconName: "globe")
+        XCTAssertTrue(detector.isAudioOutputRunning())
+        XCTAssertEqual(detector.activeAudioApplicationName().name, "Google Chrome")
+    }
+
+    @MainActor
+    func testMediaHUDCoordinatorAudioActiveIntegration() async {
+        let mediaMock = MockMediaRemoteProvider(initialItem: .idle)
+        let audioMock = MockAudioOutputDetector(initialRunning: false, appName: "Safari", iconName: "safari.fill")
+        let coordinator = MediaHUDCoordinator(provider: mediaMock, audioDetector: audioMock, autoStartMonitoring: false)
+
+        await coordinator.refreshNowPlaying()
+        XCTAssertFalse(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isAudioPlaying)
+
+        // Simulate browser audio starts playing (e.g. YouTube in Safari)
+        audioMock.simulateAudioState(isRunning: true, appName: "Safari", iconName: "safari.fill")
+        await coordinator.refreshNowPlaying()
+
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertTrue(coordinator.isAudioPlaying)
+        XCTAssertEqual(coordinator.currentTrack.title, "Safari")
+        XCTAssertEqual(coordinator.currentTrack.artist, "Audio Output")
+
+        // Simulate audio stops
+        audioMock.simulateAudioState(isRunning: false)
+        await coordinator.refreshNowPlaying()
+
+        XCTAssertFalse(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isAudioPlaying)
+    }
+
+    @MainActor
+    func testAudioCompactRectGeometry() {
+        let profile = NotchScreenProfile.fallback
+        let controller = NotchOverlayWindowController()
+
+        let compact = controller.compactRect(for: profile, isAudioActive: false)
+        let audioCompact = controller.compactRect(for: profile, isAudioActive: true)
+
+        XCTAssertGreaterThan(audioCompact.width, compact.width)
+        XCTAssertEqual(audioCompact.height, compact.height)
+        XCTAssertEqual(audioCompact.midX, compact.midX, accuracy: 0.1)
+    }
 }

@@ -428,10 +428,14 @@ public struct NotchContainerView: View {
                 .cornerRadius(10)
             }
 
-            // MARK: - Live Activities Section
-            if !liveCoordinator.activities.isEmpty {
+            // MARK: - Live Activities Section (Excludes screen recording which is managed via Quick Action button)
+            let activeLiveCards = liveCoordinator.activities.filter {
+                if case .screenRecording = $0.type { return false }
+                return true
+            }
+            if !activeLiveCards.isEmpty {
                 VStack(spacing: 6) {
-                    ForEach(liveCoordinator.activities) { act in
+                    ForEach(activeLiveCards) { act in
                         HStack(spacing: 10) {
                             Image(systemName: act.iconName)
                                 .font(.system(size: 12, weight: .semibold))

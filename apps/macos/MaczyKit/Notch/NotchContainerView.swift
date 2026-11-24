@@ -843,7 +843,7 @@ struct NowPlayingEqualizerView: View {
     let isPlaying: Bool
     @State private var phase: Double = 0.0
 
-    private let timer = Timer.publish(every: 0.22, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 0.18, on: .main, in: .common).autoconnect()
 
     var body: some View {
         HStack(alignment: .center, spacing: 3) {
@@ -854,8 +854,8 @@ struct NowPlayingEqualizerView: View {
                         width: 3.2,
                         height: isPlaying ? animatedHeight(for: index) : 3.5
                     )
-                    .animation(.easeInOut(duration: 0.22), value: phase)
-                    .animation(.easeInOut(duration: 0.22), value: isPlaying)
+                    .animation(isPlaying ? .easeInOut(duration: 0.18) : .easeOut(duration: 0.05), value: phase)
+                    .animation(.easeOut(duration: 0.06), value: isPlaying)
             }
         }
         .frame(height: 20)

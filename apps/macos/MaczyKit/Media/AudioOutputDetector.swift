@@ -195,20 +195,10 @@ public final class NativeAudioOutputDetector: AudioOutputDetectorProtocol, @unch
         let isRunning = isAudioOutputRunning()
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let handler = self.changeHandler else { return }
-            // If stopped, give 1.0s grace debounce so brief track transitions don't abruptly close notch
-            if !isRunning {
-                self.debounceTimer?.invalidate()
-                self.debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-                    guard let self = self else { return }
-                    if !self.isAudioOutputRunning() {
-                        self.changeHandler?(false)
-                    }
-                }
-            } else {
-                self.debounceTimer?.invalidate()
-                self.debounceTimer = nil
-                handler(true)
-            }
+            self.debounceTimer?.invalidate()
+            self.debounceTimer = nil
+            // Notify immediately with zero delay so spectrum stops the exact moment audio is paused/stopped
+            handler(isRunning)
         }
     }
 

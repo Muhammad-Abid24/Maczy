@@ -157,7 +157,7 @@ public final class MediaHUDCoordinator: ObservableObject {
     }
 
     /// Begin monitoring for media and CoreAudio changes.
-    public func startMonitoring(interval: TimeInterval = 2.5) {
+    public func startMonitoring(interval: TimeInterval = 0.5) {
         stopMonitoring()
 
         audioDetector.startMonitoring { [weak self] _ in

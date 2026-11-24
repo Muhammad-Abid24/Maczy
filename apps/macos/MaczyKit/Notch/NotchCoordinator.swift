@@ -494,4 +494,30 @@ public final class NotchCoordinator: ObservableObject {
     public func toggleOverlay() {
         isOverlayVisible.toggle()
     }
+
+    // MARK: - Hover Lifecycle & Smooth Debounced Collapse
+    private var scheduledCollapseTask: Task<Void, Never>? = nil
+
+    /// Cancels any scheduled collapse timeout when the cursor re-enters the notch.
+    public func cancelScheduledCollapse() {
+        scheduledCollapseTask?.cancel()
+        scheduledCollapseTask = nil
+    }
+
+    /// Schedules a collapse after a graceful debounce, only collapsing if the cursor is truly outside the notch panel.
+    public func scheduleCollapseIfMouseOutside(delay: TimeInterval = 0.25) {
+        cancelScheduledCollapse()
+        scheduledCollapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self = self, !Task.isCancelled else { return }
+            if !self.isMouseOverNotchPanel() {
+                self.setExpansionState(.compact)
+            }
+        }
+    }
+
+    /// Returns whether the cursor is currently physically over the overlay panel.
+    public func isMouseOverNotchPanel() -> Bool {
+        return windowController.isMouseOverPanel()
+    }
 }

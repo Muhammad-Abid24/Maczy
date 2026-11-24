@@ -11,8 +11,6 @@ public struct NotchContainerView: View {
     @ObservedObject var clipboardManager: ClipboardManager = .shared
     @ObservedObject var windowSnapManager: WindowSnapManager = .shared
     @ObservedObject var twsCoordinator: TWSNotchCoordinator = .shared
-    @State private var isHovered: Bool = false
-    @State private var collapseTask: Task<Void, Never>? = nil
 
     public init(coordinator: NotchCoordinator) {
         self.coordinator = coordinator
@@ -35,31 +33,27 @@ public struct NotchContainerView: View {
         ZStack {
             if isExpanded {
                 expandedIslandView
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.85, anchor: .top).combined(with: .opacity),
-                        removal: .scale(scale: 0.9, anchor: .top).combined(with: .opacity)
-                    ))
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .offset(y: -6)),
+                            removal: .opacity.combined(with: .offset(y: -4))
+                        )
+                    )
             } else {
                 compactNotchView
                     .transition(.opacity)
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: isExpanded)
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasActiveNotification)
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: isExpanded)
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hasActiveNotification)
         .onHover { hovering in
-            isHovered = hovering
-            collapseTask?.cancel()
             if hovering {
+                coordinator.cancelScheduledCollapse()
                 if coordinator.expansionState != .expanded {
                     coordinator.setExpansionState(.expanded)
                 }
             } else {
-                collapseTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 350_000_000)
-                    if !Task.isCancelled && !isHovered {
-                        coordinator.setExpansionState(.compact)
-                    }
-                }
+                coordinator.scheduleCollapseIfMouseOutside()
             }
         }
     }

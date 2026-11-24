@@ -76,8 +76,8 @@ public final class NotchOverlayWindowController {
         }
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.28
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = 0.30
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
             panel.animator().setFrame(targetFrame, display: true)
         }
     }
@@ -115,8 +115,8 @@ public final class NotchOverlayWindowController {
         stopOutsideClickMonitoring()
         let targetFrame = audioCompactRect(for: profile)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.28
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = 0.30
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
             panel.animator().setFrame(targetFrame, display: true)
         }
     }
@@ -128,8 +128,8 @@ public final class NotchOverlayWindowController {
         stopOutsideClickMonitoring()
         let targetFrame = notificationRect(for: profile)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.28
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = 0.30
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
             panel.animator().setFrame(targetFrame, display: true)
         }
     }
@@ -261,6 +261,14 @@ public final class NotchOverlayWindowController {
         }
     }
 
+    /// Checks whether the mouse location is currently over the panel frame.
+    public func isMouseOverPanel() -> Bool {
+        guard let panel = panel, panel.isVisible else { return false }
+        let mouseLocation = NSEvent.mouseLocation
+        let extended = panel.frame.insetBy(dx: -4, dy: -4)
+        return extended.contains(mouseLocation)
+    }
+
     private func ensurePanelCreated() {
         guard panel == nil else { return }
 
@@ -283,10 +291,47 @@ public final class NotchOverlayWindowController {
         newPanel.acceptsMouseMovedEvents = true
 
         let container = NotchContainerView(coordinator: NotchCoordinator.shared)
-        let hosting = NSHostingView(rootView: container)
+        let hosting = NotchHostingView(rootView: container)
         newPanel.contentView = hosting
 
         self.hostingView = hosting
         self.panel = newPanel
+    }
+}
+
+/// Custom AppKit hosting view that installs an NSTrackingArea to provide robust, glitch-free hover detection.
+final class NotchHostingView<Content: View>: NSHostingView<Content> {
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        Task { @MainActor in
+            NotchCoordinator.shared.cancelScheduledCollapse()
+            if NotchCoordinator.shared.expansionState != .expanded {
+                NotchCoordinator.shared.setExpansionState(.expanded)
+            }
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        Task { @MainActor in
+            NotchCoordinator.shared.scheduleCollapseIfMouseOutside()
+        }
     }
 }

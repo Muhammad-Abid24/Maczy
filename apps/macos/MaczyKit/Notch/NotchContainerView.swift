@@ -581,15 +581,16 @@ public struct NotchContainerView: View {
                     .foregroundColor(.white.opacity(0.4))
             }
         }
-        .padding(14)
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous))
-        .overlay(
-            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 20, bottomTrailingRadius: 20, topTrailingRadius: 0, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.4), radius: 12, x: 0, y: 6)
+        .clipShape(DynamicNotchShape(
+            cornerRadius: 22,
+            earRadius: profile.hasPhysicalNotch ? 14 : 0,
+            hasEars: profile.hasPhysicalNotch
+        ))
     }
 }
 

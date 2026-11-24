@@ -21,6 +21,8 @@ public final class NotchCoordinator: ObservableObject {
     }
 
     public let windowController: NotchOverlayWindowController
+    private var isTemporarilyVisibleForHUD: Bool = false
+    private var hudCancellable: AnyCancellable?
 
     // MARK: - Physical Notch Custom Dimensions (Persisted via UserDefaults)
     @Published public var customPhysicalCompactWidth: CGFloat? {
@@ -321,6 +323,34 @@ public final class NotchCoordinator: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.updateProfile()
+            }
+        }
+
+        // Automatically present overlay window when a system HUD event (Volume / Brightness) occurs
+        self.hudCancellable = SystemHUDCoordinator.shared.$activeHUD
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] hud in
+                self?.handleHUDEvent(hud)
+            }
+    }
+
+    private func handleHUDEvent(_ hud: SystemHUDEvent?) {
+        if hud != nil {
+            if !isOverlayVisible {
+                isTemporarilyVisibleForHUD = true
+                windowController.setOverlayVisible(true)
+            }
+            if isPhysicalActive && expansionState == .compact {
+                let targetWidth = max(activeProfile.notchRect.width, 280.0)
+                windowController.animateToCompactWidth(targetWidth, profile: activeProfile)
+            }
+        } else {
+            if isTemporarilyVisibleForHUD {
+                isTemporarilyVisibleForHUD = false
+                windowController.setOverlayVisible(isOverlayVisible)
+            }
+            if isPhysicalActive && expansionState == .compact {
+                windowController.animateToCompactWidth(activeProfile.notchRect.width, profile: activeProfile)
             }
         }
     }

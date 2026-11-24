@@ -57,10 +57,14 @@ public struct NotchContainerView: View {
             HStack(spacing: 8) {
                 if let hud = systemHUD.activeHUD {
                     // System HUD Level Toast (Volume or Brightness)
+                    let isBrightness = (hud.type == .brightness)
+                    let accentColor = isBrightness ? MaczyDesignTokens.statusOrange : MaczyDesignTokens.brandPurple
+                    let iconColor = isBrightness ? MaczyDesignTokens.statusOrange : MaczyDesignTokens.brandLavender
+
                     HStack(spacing: 8) {
                         Image(systemName: hud.iconName)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(MaczyDesignTokens.brandLavender)
+                            .foregroundColor(iconColor)
 
                         // Progress fill bar
                         GeometryReader { geo in
@@ -69,7 +73,7 @@ public struct NotchContainerView: View {
                                     .fill(Color.white.opacity(0.2))
                                     .frame(height: 5)
                                 Capsule()
-                                    .fill(MaczyDesignTokens.brandPurple)
+                                    .fill(accentColor)
                                     .frame(width: max(0, geo.size.width * CGFloat(hud.level)), height: 5)
                             }
                             .frame(maxHeight: .infinity, alignment: .center)
@@ -83,7 +87,7 @@ public struct NotchContainerView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.95))
                     .clipShape(Capsule())
-                    .overlay(Capsule().stroke(MaczyDesignTokens.brandPurple.opacity(0.4), lineWidth: 1))
+                    .overlay(Capsule().stroke(accentColor.opacity(0.4), lineWidth: 1))
 
                 } else if let tws = twsCoordinator.activeConnectionToast {
                     // AirPods / TWS Connection Toast Pill

@@ -82,6 +82,21 @@ public final class NotchOverlayWindowController {
         }
     }
 
+    /// Smoothly animate panel width in compact mode (e.g. during HUD toast presentation).
+    public func animateToCompactWidth(_ width: CGFloat, profile: NotchScreenProfile) {
+        ensurePanelCreated()
+        guard let panel = panel else { return }
+        let baseRect = targetRect(for: .compact, profile: profile)
+        let newX = baseRect.midX - (width / 2.0)
+        let targetFrame = CGRect(x: newX, y: baseRect.minY, width: width, height: baseRect.height)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }
+    }
+
     /// Handle simulated or event-based outside click testing. Returns true if outside and collapsed.
     @discardableResult
     public func handleSimulatedClick(at screenPoint: NSPoint) -> Bool {

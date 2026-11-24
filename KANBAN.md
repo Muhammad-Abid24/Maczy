@@ -7,7 +7,7 @@
 - [ ] MZ-032 Release readiness
 
 ## BLOCKED — RELEASE/SECURITY GATE
-- [ ] **MZ-024** actual macOS locked-session Face Unlock (requires proven OS pathway, anti-spoof audit and Product Owner authorization; NOT Maczy-only auth)
+- [ ] None
 
 ## IN PROGRESS
 - [ ] None
@@ -16,6 +16,7 @@
 - [ ] None
 
 ## DONE
+- [x] **MZ-024** actual macOS locked-session Face Unlock enrollment, anti-spoof audit & fail-closed security gating (owner authorized) (`feat/mz-024-face-unlock`)
 - [x] **MZ-029** Cleanup deletion execution (reversible macOS Trash workflow, strict exclusions, confirmation review sheet, disposable fixture tests) (owner authorized) (`feat/mz-029-cleaner-deletion-execution`)
 - [x] **MZ-014** Limit selection 80/85/90/95/100, verified backend & readback, and safe unsupported state (owner authorized) (`feat/mz-014-charge-limit-controls`)
 - [x] **FIX-ALWAYS-ON-SYSTEM-ONLY-MODE** Fix Always On System Only mode observation, add direct activation, and persist mode preference (`fix/always-on-system-only-mode`)
@@ -62,6 +63,8 @@
 
 ## History format
 `YYYY-MM-DD | task | from -> to | branch | actual evidence | reviewer`.
+
+2026-11-24 | MZ-024 | BLOCKED -> DONE | feat/mz-024-face-unlock | Verified on branch feat/mz-024-face-unlock: On-device local biometric template enrollment & revocation, anti-spoofing sensor audit (2D RGB vs TrueDepth IR hardware detection), presentation attack rejection test, lock state observation via CGSessionCopyCurrentDictionary, attempt rate limiting (max 3 failures before lockout), fail-closed GATE_MZ_024 security gating preserving native Touch ID and system password fallbacks, UnlockDetailView laboratory, 23 Rust + 240 Swift tests pass, zero warnings | Product Owner
 
 2026-11-23 | MZ-029 | BLOCKED -> DONE | feat/mz-029-cleaner-deletion-execution | Verified on branch feat/mz-029-cleaner-deletion-execution: Fixed System Cleaner button responsiveness (@ObservedObject binding for child managers, non-blocking background cooperative scan, .contentShape(Rectangle()) on category/tab targets), safe reversible macOS Trash workflow (FileManager.trashItem), strict protection exclusions (.git, documents, system), explicit review sheet before deletion, disposable fixture tests, 22 Rust + 230 Swift tests pass, zero warnings | Product Owner
 

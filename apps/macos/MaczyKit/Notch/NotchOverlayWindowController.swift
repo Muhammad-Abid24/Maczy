@@ -56,18 +56,27 @@ public final class NotchOverlayWindowController {
         }
     }
 
+    /// Maximum canvas frame housing the Dynamic Notch, sized to fit the largest expanded state without resizing the NSPanel.
+    public func canvasRect(for profile: NotchScreenProfile) -> CGRect {
+        let maxWidth: CGFloat = max(profile.expandedSize.width, 520.0)
+        let maxHeight: CGFloat = max(profile.expandedSize.height, 360.0)
+        let x = profile.notchRect.midX - (maxWidth / 2.0)
+        let y = profile.screenFrame.maxY - maxHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+        return CGRect(x: x, y: y, width: maxWidth, height: maxHeight)
+    }
+
     /// Update panel frame for new screen profile.
     public func updateProfile(_ profile: NotchScreenProfile, expansionState: NotchExpansionState) {
         guard let panel = panel else { return }
-        let targetFrame = targetRect(for: expansionState, profile: profile)
+        let targetFrame = canvasRect(for: profile)
         panel.setFrame(targetFrame, display: true, animate: false)
     }
 
-    /// Smoothly animate panel frame during compact <-> expanded state transitions.
+    /// Smoothly update state without triggering legacy 30 FPS NSWindow resize.
+    /// Hardware GPU CoreAnimation inside SwiftUI renders the expansion at native display FPS (120Hz ProMotion).
     public func animateToState(_ state: NotchExpansionState, profile: NotchScreenProfile) {
         ensurePanelCreated()
         guard let panel = panel else { return }
-        let targetFrame = targetRect(for: state, profile: profile)
 
         if state == .expanded {
             startOutsideClickMonitoring()
@@ -75,10 +84,9 @@ public final class NotchOverlayWindowController {
             stopOutsideClickMonitoring()
         }
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.30
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
-            panel.animator().setFrame(targetFrame, display: true)
+        let canvas = canvasRect(for: profile)
+        if panel.frame != canvas {
+            panel.setFrame(canvas, display: true)
         }
     }
 
@@ -261,11 +269,34 @@ public final class NotchOverlayWindowController {
         }
     }
 
-    /// Checks whether the mouse location is currently over the panel frame.
+    /// Checks whether the mouse location is currently over the active visual notch shape.
     public func isMouseOverPanel() -> Bool {
         guard let panel = panel, panel.isVisible else { return false }
         let mouseLocation = NSEvent.mouseLocation
-        let extended = panel.frame.insetBy(dx: -4, dy: -4)
+        let profile = NotchCoordinator.shared.activeProfile
+        let isExpanded = (NotchCoordinator.shared.expansionState == .expanded)
+
+        let visualWidth: CGFloat
+        let visualHeight: CGFloat
+
+        if isExpanded {
+            visualWidth = NotchCoordinator.shared.activeExpandedWidth
+            visualHeight = NotchCoordinator.shared.activeExpandedHeight
+        } else if NotchCoordinator.shared.isNotificationActive {
+            visualWidth = NotchCoordinator.shared.activeNotificationWidth
+            visualHeight = NotchCoordinator.shared.activeNotificationHeight
+        } else if MediaHUDCoordinator.shared.isAudioActive {
+            visualWidth = NotchCoordinator.shared.activeAudioCompactWidth
+            visualHeight = NotchCoordinator.shared.activeCompactHeight
+        } else {
+            visualWidth = NotchCoordinator.shared.currentCompactWidth
+            visualHeight = NotchCoordinator.shared.activeCompactHeight
+        }
+
+        let x = profile.notchRect.midX - (visualWidth / 2.0)
+        let y = profile.screenFrame.maxY - visualHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+        let activeScreenRect = CGRect(x: x, y: y, width: visualWidth, height: visualHeight)
+        let extended = activeScreenRect.insetBy(dx: -4, dy: -4)
         return extended.contains(mouseLocation)
     }
 
@@ -273,7 +304,7 @@ public final class NotchOverlayWindowController {
         guard panel == nil else { return }
 
         let initialProfile = NotchCoordinator.shared.activeProfile
-        let frame = initialProfile.notchRect
+        let frame = canvasRect(for: initialProfile)
 
         let newPanel = NotchPanel(
             contentRect: frame,
@@ -299,9 +330,51 @@ public final class NotchOverlayWindowController {
     }
 }
 
-/// Custom AppKit hosting view that installs an NSTrackingArea to provide robust, glitch-free hover detection.
+/// Custom AppKit hosting view that handles hit-testing and hover detection directly on the active visual notch area.
+/// Unused canvas space outside the active notch returns nil from hitTest, passing clicks straight through to windows behind.
 final class NotchHostingView<Content: View>: NSHostingView<Content> {
     private var trackingArea: NSTrackingArea?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let coordinator = NotchCoordinator.shared
+        let isExpanded = (coordinator.expansionState == .expanded)
+
+        let visualWidth: CGFloat
+        let visualHeight: CGFloat
+
+        if isExpanded {
+            visualWidth = coordinator.activeExpandedWidth
+            visualHeight = coordinator.activeExpandedHeight
+        } else if coordinator.isNotificationActive {
+            visualWidth = coordinator.activeNotificationWidth
+            visualHeight = coordinator.activeNotificationHeight
+        } else if MediaHUDCoordinator.shared.isAudioActive {
+            visualWidth = coordinator.activeAudioCompactWidth
+            visualHeight = coordinator.activeCompactHeight
+        } else {
+            visualWidth = coordinator.currentCompactWidth
+            visualHeight = coordinator.activeCompactHeight
+        }
+
+        let winBounds = self.bounds
+        let visualX = (winBounds.width - visualWidth) / 2.0
+        let visualY = winBounds.height - visualHeight
+        let activeRect = CGRect(x: visualX, y: visualY, width: visualWidth, height: visualHeight)
+
+        let interactiveRect = activeRect.insetBy(dx: -4, dy: -4)
+        if interactiveRect.contains(point) {
+            return super.hitTest(point)
+        }
+
+        // If expanded and user clicked outside the active card, collapse!
+        if isExpanded && NSApp.currentEvent?.type == .leftMouseDown {
+            Task { @MainActor in
+                coordinator.setExpansionState(.compact)
+            }
+        }
+
+        return nil
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -321,9 +394,11 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         Task { @MainActor in
-            NotchCoordinator.shared.cancelScheduledCollapse()
-            if NotchCoordinator.shared.expansionState != .expanded {
-                NotchCoordinator.shared.setExpansionState(.expanded)
+            if NotchCoordinator.shared.isMouseOverNotchPanel() {
+                NotchCoordinator.shared.cancelScheduledCollapse()
+                if NotchCoordinator.shared.expansionState != .expanded {
+                    NotchCoordinator.shared.setExpansionState(.expanded)
+                }
             }
         }
     }

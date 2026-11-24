@@ -29,22 +29,54 @@ public struct NotchContainerView: View {
         coordinator.expansionState == .expanded
     }
 
-    public var body: some View {
-        ZStack {
-            if isExpanded {
-                expandedIslandView
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .offset(y: -6)),
-                            removal: .opacity.combined(with: .offset(y: -4))
-                        )
-                    )
-            } else {
-                compactNotchView
-                    .transition(.opacity)
-            }
+    private var activeWidth: CGFloat {
+        if isExpanded {
+            return coordinator.activeExpandedWidth
+        } else if hasActiveNotification {
+            return coordinator.activeNotificationWidth
+        } else if mediaCoordinator.isAudioActive {
+            return coordinator.activeAudioCompactWidth
+        } else {
+            return coordinator.currentCompactWidth
         }
+    }
+
+    private var activeHeight: CGFloat {
+        if isExpanded {
+            return coordinator.activeExpandedHeight
+        } else if hasActiveNotification {
+            return coordinator.activeNotificationHeight
+        } else {
+            return coordinator.currentCompactHeight
+        }
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                if isExpanded {
+                    expandedIslandView
+                        .transition(.opacity)
+                } else {
+                    compactNotchView
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: activeWidth, height: activeHeight)
+            .background(Color.black)
+            .clipShape(
+                DynamicNotchShape(
+                    cornerRadius: isExpanded ? 22 : 12,
+                    earRadius: profile.hasPhysicalNotch ? (isExpanded ? 14 : 10) : 0,
+                    hasEars: profile.hasPhysicalNotch
+                )
+            )
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: isExpanded)
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: mediaCoordinator.isAudioActive)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hasActiveNotification)
         .onHover { hovering in
             if hovering {
@@ -199,12 +231,6 @@ public struct NotchContainerView: View {
                             .padding(.trailing, profile.hasPhysicalNotch ? 22 : 16)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
-                    .clipShape(DynamicNotchShape(
-                        cornerRadius: 14,
-                        earRadius: profile.hasPhysicalNotch ? 12 : 0,
-                        hasEars: profile.hasPhysicalNotch
-                    ))
 
                 } else if profile.isVirtualIsland {
                     // Virtual Island Pill with Battery
@@ -616,12 +642,6 @@ public struct NotchContainerView: View {
         .padding(.top, 14)
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
-        .clipShape(DynamicNotchShape(
-            cornerRadius: 22,
-            earRadius: profile.hasPhysicalNotch ? 14 : 0,
-            hasEars: profile.hasPhysicalNotch
-        ))
     }
 }
 
@@ -694,6 +714,14 @@ public struct DynamicNotchShape: Shape {
     public var cornerRadius: CGFloat = 20
     public var earRadius: CGFloat = 12
     public var hasEars: Bool = true
+
+    public var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(cornerRadius, earRadius) }
+        set {
+            cornerRadius = newValue.first
+            earRadius = newValue.second
+        }
+    }
 
     public init(cornerRadius: CGFloat = 20, earRadius: CGFloat = 12, hasEars: Bool = true) {
         self.cornerRadius = cornerRadius

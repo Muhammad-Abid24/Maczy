@@ -520,4 +520,24 @@ public final class NotchCoordinator: ObservableObject {
     public func isMouseOverNotchPanel() -> Bool {
         return windowController.isMouseOverPanel()
     }
+
+    // MARK: - Dynamic Canvas Dimensions for 120 FPS GPU Render Pipeline
+    public var activeAudioCompactWidth: CGFloat {
+        windowController.audioCompactRect(for: activeProfile).width
+    }
+    public var activeCompactHeight: CGFloat {
+        activeProfile.notchRect.height
+    }
+    public var activeNotificationWidth: CGFloat {
+        windowController.notificationRect(for: activeProfile).width
+    }
+    public var activeNotificationHeight: CGFloat {
+        windowController.notificationRect(for: activeProfile).height
+    }
+    public var activeExpandedWidth: CGFloat {
+        windowController.expandedRect(for: activeProfile).width
+    }
+    public var activeExpandedHeight: CGFloat {
+        windowController.expandedRect(for: activeProfile).height
+    }
 }

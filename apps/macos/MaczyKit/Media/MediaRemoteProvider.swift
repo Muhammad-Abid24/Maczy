@@ -45,8 +45,25 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
         return .idle
     }
 
-    private func queryMediaRemote() async -> NowPlayingItem? {
+    /// Asynchronously queries whether the system MediaRemote application is actively playing media.
+    public static func checkIsApplicationPlaying() async -> Bool {
         await withCheckedContinuation { continuation in
+            guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY),
+                  let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying") else {
+                continuation.resume(returning: false)
+                return
+            }
+            typealias MRIsPlayingFunc = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
+            let fn = unsafeBitCast(sym, to: MRIsPlayingFunc.self)
+            fn(DispatchQueue.global(qos: .userInteractive)) { playing in
+                continuation.resume(returning: playing)
+            }
+        }
+    }
+
+    private func queryMediaRemote() async -> NowPlayingItem? {
+        let appPlaying = await Self.checkIsApplicationPlaying()
+        return await withCheckedContinuation { continuation in
             guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY),
                   let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else {
                 continuation.resume(returning: nil)
@@ -70,7 +87,10 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
                 let duration = info["kMRMediaRemoteNowPlayingInfoDuration"] as? Double
                 let elapsed = info["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double
                 let rate = info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Int).map(Double.init) ?? 0.0
-                let isPlaying = (rate > 0.01)
+                var isPlaying = (rate > 0.01)
+                if !appPlaying {
+                    isPlaying = false
+                }
 
                 var icon = "play.rectangle.fill"
                 let titleLower = title.lowercased()
@@ -195,50 +215,28 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
         if bundleId == "com.apple.Safari" {
             script = """
             tell application "Safari"
+                if (count of windows) = 0 then return ""
                 repeat with w in windows
                     set t to current tab of w
                     set u to (URL of t) as text
-                    if u contains "youtube.com/watch" or u contains "music.youtube" or u contains "soundcloud" or u contains "spotify" then
+                    if u contains "youtube.com/watch" or u contains "music.youtube" or u contains "soundcloud" or u contains "spotify.com" then
                         return (name of t) & "|||" & u
                     end if
                 end repeat
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        set u to (URL of t) as text
-                        if u contains "youtube.com/watch" or u contains "music.youtube" then
-                            return (name of t) & "|||" & u
-                        end if
-                    end repeat
-                end repeat
-                if (count of windows) > 0 then
-                    set t to current tab of window 1
-                    return (name of t) & "|||" & ((URL of t) as text)
-                end if
                 return ""
             end tell
             """
         } else {
             script = """
             tell application id "\(bundleId)"
+                if (count of windows) = 0 then return ""
                 repeat with w in windows
                     set t to active tab of w
                     set u to (URL of t) as text
-                    if u contains "youtube.com/watch" or u contains "music.youtube" or u contains "soundcloud" or u contains "spotify" then
+                    if u contains "youtube.com/watch" or u contains "music.youtube" or u contains "soundcloud" or u contains "spotify.com" then
                         return (title of t) & "|||" & u
                     end if
                 end repeat
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        set u to (URL of t) as text
-                        if u contains "youtube.com/watch" or u contains "music.youtube" then
-                            return (title of t) & "|||" & u
-                        end if
-                    end repeat
-                end repeat
-                if (count of windows) > 0 then
-                    set t to active tab of window 1
-                    return (title of t) & "|||" & ((URL of t) as text)
-                end if
                 return ""
             end tell
             """
@@ -251,11 +249,13 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
         guard !rawTitle.isEmpty else { return nil }
 
         let parsed = parseBrowserMediaTitle(rawTitle, browserName: browserName)
+        let isPlaying = await Self.checkIsApplicationPlaying()
+
         return NowPlayingItem(
             title: parsed.title,
             artist: parsed.artist,
             album: nil,
-            isPlaying: true,
+            isPlaying: isPlaying,
             duration: nil,
             elapsedTime: nil,
             artworkIconName: parsed.icon

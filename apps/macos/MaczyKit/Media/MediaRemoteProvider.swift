@@ -13,29 +13,82 @@ public protocol MediaRemoteProviderProtocol: Sendable {
 
 /// Native macOS provider querying active players (Music, Spotify, browsers) asynchronously.
 public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
+    private typealias MRGetNowPlayingInfoFunc = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
+
     public init() {}
 
     public func fetchNowPlaying() async -> NowPlayingItem {
-        // 1. Check if Apple Music is running
+        // 1. Direct MediaRemote query (fastest, supports YouTube in browsers, Music, Spotify)
+        if let remoteTrack = await queryMediaRemote() {
+            return remoteTrack
+        }
+
+        // 2. Check if Apple Music is running
         if isAppRunning(bundleId: "com.apple.Music") {
             if let track = await queryMusicPlayer() {
                 return track
             }
         }
 
-        // 2. Check if Spotify is running
+        // 3. Check if Spotify is running
         if isAppRunning(bundleId: "com.spotify.client") {
             if let track = await querySpotifyPlayer() {
                 return track
             }
         }
 
-        // 3. Check web browsers (Brave, Chrome, Safari, Edge, Arc)
+        // 4. Check web browsers (Brave, Chrome, Safari, Edge, Arc)
         if let browserTrack = await queryBrowserMedia() {
             return browserTrack
         }
 
         return .idle
+    }
+
+    private func queryMediaRemote() async -> NowPlayingItem? {
+        await withCheckedContinuation { continuation in
+            guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY),
+                  let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else {
+                continuation.resume(returning: nil)
+                return
+            }
+            let getInfo = unsafeBitCast(sym, to: MRGetNowPlayingInfoFunc.self)
+            getInfo(DispatchQueue.global(qos: .userInteractive)) { info in
+                guard !info.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let title = info["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
+                guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let artist = info["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? "Media"
+                let album = info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String
+                let duration = info["kMRMediaRemoteNowPlayingInfoDuration"] as? Double
+                let elapsed = info["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double
+                let rate = info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Int).map(Double.init) ?? 0.0
+                let isPlaying = (rate > 0.01)
+
+                var icon = "play.rectangle.fill"
+                if let dur = duration, dur > 0 {
+                    icon = "music.note"
+                }
+
+                let item = NowPlayingItem(
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    isPlaying: isPlaying,
+                    duration: duration,
+                    elapsedTime: elapsed,
+                    artworkIconName: icon
+                )
+                continuation.resume(returning: item)
+            }
+        }
     }
 
     public func play() async {

@@ -39,13 +39,7 @@ public final class MediaHUDCoordinator: ObservableObject {
 
         let isTrackPlaying: Bool = {
             if track != .idle && track.title != NowPlayingItem.idle.title {
-                if track.duration != nil {
-                    // Dedicated player with timeline (Music, Spotify, Mock)
-                    return track.isPlaying
-                } else {
-                    // Browser streaming audio (YouTube, web)
-                    return audioRunning
-                }
+                return track.isPlaying
             }
             return audioRunning
         }()
@@ -157,12 +151,45 @@ public final class MediaHUDCoordinator: ObservableObject {
     }
 
     /// Begin monitoring for media and CoreAudio changes.
-    public func startMonitoring(interval: TimeInterval = 0.5) {
+    public func startMonitoring(interval: TimeInterval = 0.3) {
         stopMonitoring()
 
         audioDetector.startMonitoring { [weak self] _ in
             Task { @MainActor in
                 await self?.refreshNowPlaying()
+            }
+        }
+
+        // Register for real-time MediaRemote notifications (instantaneous pause/play detection)
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+           ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+           NSClassFromString("XCTestCase") == nil {
+            if let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY) {
+                if let regSym = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications") {
+                    typealias RegisterFunc = @convention(c) (DispatchQueue) -> Void
+                    let register = unsafeBitCast(regSym, to: RegisterFunc.self)
+                    register(DispatchQueue.main)
+                }
+            }
+
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("kMRMediaRemoteNowPlayingInfoDidChangeNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    await self?.refreshNowPlaying()
+                }
+            }
+
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    await self?.refreshNowPlaying()
+                }
             }
         }
 

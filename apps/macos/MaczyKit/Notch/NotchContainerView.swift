@@ -854,8 +854,8 @@ struct NowPlayingEqualizerView: View {
                         width: 3.2,
                         height: isPlaying ? animatedHeight(for: index) : 3.5
                     )
-                    .animation(isPlaying ? .easeInOut(duration: 0.18) : .easeOut(duration: 0.05), value: phase)
-                    .animation(.easeOut(duration: 0.06), value: isPlaying)
+                    .animation(isPlaying ? .easeInOut(duration: 0.18) : .none, value: phase)
+                    .animation(isPlaying ? .easeInOut(duration: 0.18) : .none, value: isPlaying)
             }
         }
         .frame(height: 20)

@@ -92,6 +92,7 @@ public final class SystemHUDCoordinator: ObservableObject {
 
     deinit {
         dismissTimer?.invalidate()
+        MediaKeyInterceptor.shared.stop()
         Self.applyNativeOSDSuppression(false)
     }
 
@@ -130,6 +131,7 @@ public final class SystemHUDCoordinator: ObservableObject {
     /// Begin observing real-time system hardware changes from CoreAudio and DisplayServices.
     public func startHardwareObservation() {
         setNativeOSDSuppressed(true)
+        MediaKeyInterceptor.shared.start()
         audioController.startObserving { [weak self] vol, muted in
             if Thread.isMainThread {
                 MainActor.assumeIsolated {
@@ -162,6 +164,7 @@ public final class SystemHUDCoordinator: ObservableObject {
     /// Stop observing hardware changes.
     public func stopHardwareObservation() {
         setNativeOSDSuppressed(false)
+        MediaKeyInterceptor.shared.stop()
         audioController.stopObserving()
         displayController.stopObserving()
     }

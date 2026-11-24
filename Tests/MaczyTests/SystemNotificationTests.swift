@@ -191,4 +191,21 @@ final class SystemNotificationTests: XCTestCase {
         coordinator.stopHardwareObservation()
         XCTAssertFalse(coordinator.isNativeOSDSuppressed)
     }
+
+    func testMediaKeyInterceptorTargetKeysAndActions() {
+        let interceptor = MediaKeyInterceptor()
+
+        XCTAssertTrue(interceptor.isTargetMediaKey(MediaKeyInterceptor.NX_KEYTYPE_SOUND_UP))
+        XCTAssertTrue(interceptor.isTargetMediaKey(MediaKeyInterceptor.NX_KEYTYPE_SOUND_DOWN))
+        XCTAssertTrue(interceptor.isTargetMediaKey(MediaKeyInterceptor.NX_KEYTYPE_MUTE))
+        XCTAssertTrue(interceptor.isTargetMediaKey(MediaKeyInterceptor.NX_KEYTYPE_BRIGHTNESS_UP))
+        XCTAssertTrue(interceptor.isTargetMediaKey(MediaKeyInterceptor.NX_KEYTYPE_BRIGHTNESS_DOWN))
+        XCTAssertFalse(interceptor.isTargetMediaKey(999))
+
+        // Test start/stop lifecycle (guarded against real event tap creation during unit testing)
+        interceptor.start()
+        XCTAssertTrue(interceptor.isRunning)
+        interceptor.stop()
+        XCTAssertFalse(interceptor.isRunning)
+    }
 }

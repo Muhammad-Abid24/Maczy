@@ -112,6 +112,7 @@ public final class NotchOverlayWindowController {
     public func animateToAudioCompactSize(profile: NotchScreenProfile) {
         ensurePanelCreated()
         guard let panel = panel else { return }
+        stopOutsideClickMonitoring()
         let targetFrame = audioCompactRect(for: profile)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.28
@@ -124,6 +125,7 @@ public final class NotchOverlayWindowController {
     public func animateToNotificationSize(profile: NotchScreenProfile) {
         ensurePanelCreated()
         guard let panel = panel else { return }
+        stopOutsideClickMonitoring()
         let targetFrame = notificationRect(for: profile)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.28
@@ -139,6 +141,7 @@ public final class NotchOverlayWindowController {
             completion?()
             return
         }
+        stopOutsideClickMonitoring()
         let targetFrame = compactRect(for: profile)
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
@@ -223,17 +226,38 @@ public final class NotchOverlayWindowController {
         }
     }
 
+    /// Calculates the expanded frame dynamically sizing to accommodate active cards with full rounded bounds.
+    @MainActor
+    public func expandedRect(for profile: NotchScreenProfile, isMediaActive: Bool? = nil) -> CGRect {
+        let activeMedia = isMediaActive ?? MediaHUDCoordinator.shared.isMediaActive
+        var targetHeight: CGFloat = max(profile.expandedSize.height, 195.0)
+        if activeMedia {
+            targetHeight += 82.0
+        }
+        if TWSNotchCoordinator.shared.activeConnectionToast != nil {
+            targetHeight += 70.0
+        }
+        let activeLiveCards = LiveActivityCoordinator.shared.activities.filter {
+            if case .screenRecording = $0.type { return false }
+            return true
+        }
+        if !activeLiveCards.isEmpty {
+            targetHeight += CGFloat(activeLiveCards.count) * 44.0
+        }
+
+        let targetWidth: CGFloat = max(profile.expandedSize.width, 480.0)
+        let x = profile.notchRect.midX - (targetWidth / 2.0)
+        let y = profile.screenFrame.maxY - targetHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+        return CGRect(x: x, y: y, width: targetWidth, height: targetHeight)
+    }
+
     private func targetRect(for state: NotchExpansionState, profile: NotchScreenProfile) -> CGRect {
         switch state {
         case .compact:
             let isAudio = MediaHUDCoordinator.shared.isAudioActive
             return compactRect(for: profile, isAudioActive: isAudio)
         case .expanded:
-            return NotchGeometry.calculateExpandedRect(
-                anchorRect: profile.notchRect,
-                expandedSize: profile.expandedSize,
-                isPhysicalNotch: profile.hasPhysicalNotch
-            )
+            return expandedRect(for: profile)
         }
     }
 

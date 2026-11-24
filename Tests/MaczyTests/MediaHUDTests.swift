@@ -288,4 +288,23 @@ final class MediaHUDTests: XCTestCase {
         XCTAssertEqual(audioCompact.height, compact.height)
         XCTAssertEqual(audioCompact.midX, compact.midX, accuracy: 0.1)
     }
+
+    @MainActor
+    func testExpandedRectDynamicHeightWithActiveMedia() {
+        let profile = NotchScreenProfile.fallback
+        let controller = NotchOverlayWindowController()
+
+        let baseExpanded = controller.expandedRect(for: profile, isMediaActive: false)
+        XCTAssertGreaterThanOrEqual(baseExpanded.width, 480.0)
+        XCTAssertGreaterThanOrEqual(baseExpanded.height, 195.0)
+
+        let mediaExpanded = controller.expandedRect(for: profile, isMediaActive: true)
+        XCTAssertGreaterThan(mediaExpanded.height, baseExpanded.height)
+    }
+
+    func testSystemMediaKeyExecutionSafety() {
+        NativeMediaRemoteProvider.sendSystemMediaKey(key: 16)
+        // Passes if no exception or memory violation occurs
+        XCTAssertTrue(true)
+    }
 }

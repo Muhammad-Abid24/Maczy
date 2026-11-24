@@ -358,6 +358,8 @@ public final class NotchCoordinator: ObservableObject {
             }
             if expansionState == .compact {
                 windowController.animateToAudioCompactSize(profile: activeProfile)
+            } else if expansionState == .expanded {
+                windowController.animateToState(.expanded, profile: activeProfile)
             }
         } else {
             if expansionState == .compact {
@@ -370,6 +372,8 @@ public final class NotchCoordinator: ObservableObject {
                         }
                     }
                 }
+            } else if expansionState == .expanded {
+                windowController.animateToState(.expanded, profile: activeProfile)
             }
         }
     }

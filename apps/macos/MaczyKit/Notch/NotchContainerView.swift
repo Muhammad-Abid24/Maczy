@@ -388,28 +388,45 @@ public struct NotchContainerView: View {
                         }
                     }
 
-                    // Track Progress Bar
-                    HStack(spacing: 6) {
-                        Text(mediaCoordinator.currentTrack.formattedElapsed)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
+                    // Track Progress Bar / Stream Status
+                    if let duration = mediaCoordinator.currentTrack.duration, duration > 0 {
+                        HStack(spacing: 6) {
+                            Text(mediaCoordinator.currentTrack.formattedElapsed)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
 
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.15))
-                                    .frame(height: 3)
-                                Capsule()
-                                    .fill(MaczyDesignTokens.brandPurple)
-                                    .frame(width: max(0, geo.size.width * CGFloat(mediaCoordinator.currentTrack.progress)), height: 3)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.15))
+                                        .frame(height: 3)
+                                    Capsule()
+                                        .fill(MaczyDesignTokens.brandPurple)
+                                        .frame(width: max(0, geo.size.width * CGFloat(mediaCoordinator.currentTrack.progress)), height: 3)
+                                }
+                                .frame(maxHeight: .infinity, alignment: .center)
                             }
-                            .frame(maxHeight: .infinity, alignment: .center)
+                            .frame(height: 10)
+
+                            Text(mediaCoordinator.currentTrack.formattedDuration)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                    } else {
+                        // Live Audio / Browser Media Stream Status
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color(red: 0.85, green: 0.58, blue: 0.38))
+                                .frame(width: 5, height: 5)
+                            Text("Active Stream • \(mediaCoordinator.currentTrack.artist)")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(1)
+                            Spacer()
+                            NowPlayingEqualizerView(isPlaying: mediaCoordinator.isAudioPlaying)
+                                .scaleEffect(0.65)
                         }
                         .frame(height: 10)
-
-                        Text(mediaCoordinator.currentTrack.formattedDuration)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
                     }
                 }
                 .padding(10)

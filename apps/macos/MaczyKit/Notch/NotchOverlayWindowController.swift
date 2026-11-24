@@ -22,7 +22,7 @@ final class NotchPanel: NSPanel {
 @MainActor
 public final class NotchOverlayWindowController {
     private var panel: NotchPanel?
-    private var hostingView: NSHostingView<NotchContainerView>?
+    private var hostingView: NotchHostingView<NotchContainerView>?
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
 
@@ -94,12 +94,24 @@ public final class NotchOverlayWindowController {
         }
 
         ensureCanvasSize(for: profile)
+        // Refresh tracking rect to match the new state's visible notch area
+        hostingView?.refreshTrackingAreas()
     }
 
     /// Target frame when a notification, volume, or brightness HUD is actively presenting.
     public func notificationRect(for profile: NotchScreenProfile) -> CGRect {
-        let targetWidth: CGFloat = profile.hasPhysicalNotch ? max(profile.notchRect.width + 90.0, 350.0) : 350.0
-        let targetHeight: CGFloat = profile.hasPhysicalNotch ? (profile.notchRect.height + 46.0) : 64.0
+        let isAppNotification = LiveActivityCoordinator.shared.primaryActivity != nil
+        let targetWidth: CGFloat
+        let targetHeight: CGFloat
+
+        if isAppNotification {
+            targetWidth = profile.hasPhysicalNotch ? max(profile.notchRect.width + 200.0, 440.0) : 440.0
+            targetHeight = profile.hasPhysicalNotch ? (profile.notchRect.height + 84.0) : 96.0
+        } else {
+            targetWidth = profile.hasPhysicalNotch ? max(profile.notchRect.width + 90.0, 350.0) : 350.0
+            targetHeight = profile.hasPhysicalNotch ? (profile.notchRect.height + 46.0) : 64.0
+        }
+
         let x = profile.notchRect.midX - (targetWidth / 2.0)
         let y = profile.screenFrame.maxY - targetHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
         return CGRect(x: x, y: y, width: targetWidth, height: targetHeight)
@@ -127,6 +139,7 @@ public final class NotchOverlayWindowController {
         ensurePanelCreated()
         stopOutsideClickMonitoring()
         ensureCanvasSize(for: profile)
+        hostingView?.refreshTrackingAreas()
     }
 
     /// Adapts canvas for enlarged notification banner size; SwiftUI GPU spring handles 120 FPS expansion.
@@ -134,6 +147,7 @@ public final class NotchOverlayWindowController {
         ensurePanelCreated()
         stopOutsideClickMonitoring()
         ensureCanvasSize(for: profile)
+        hostingView?.refreshTrackingAreas()
     }
 
     /// Adapts canvas for normal compact size; SwiftUI GPU spring handles 120 FPS collapse.
@@ -141,6 +155,7 @@ public final class NotchOverlayWindowController {
         ensurePanelCreated()
         stopOutsideClickMonitoring()
         ensureCanvasSize(for: profile)
+        hostingView?.refreshTrackingAreas()
         completion?()
     }
 
@@ -148,6 +163,7 @@ public final class NotchOverlayWindowController {
     public func animateToCompactWidth(_ width: CGFloat, profile: NotchScreenProfile) {
         ensurePanelCreated()
         ensureCanvasSize(for: profile)
+        hostingView?.refreshTrackingAreas()
     }
 
     /// Handle simulated or event-based outside click testing. Returns true if outside and collapsed.
@@ -241,34 +257,42 @@ public final class NotchOverlayWindowController {
     }
 
     /// Checks whether the mouse location is currently over the active visual notch shape.
+    /// Compact state strictly checks the physical notch silhouette (profile.notchRect) so that
+    /// hover only triggers when the cursor is actually over the hardware notch cutout, not the
+    /// transparent canvas padding around it.
     public func isMouseOverPanel() -> Bool {
         guard let panel = panel, panel.isVisible else { return false }
         let mouseLocation = NSEvent.mouseLocation
         let profile = NotchCoordinator.shared.activeProfile
-        let isExpanded = (NotchCoordinator.shared.expansionState == .expanded)
+        let coordinator = NotchCoordinator.shared
+        let isExpanded = (coordinator.expansionState == .expanded)
 
-        let visualWidth: CGFloat
-        let visualHeight: CGFloat
-
+        let hoverRect: CGRect
         if isExpanded {
-            visualWidth = NotchCoordinator.shared.activeExpandedWidth
-            visualHeight = NotchCoordinator.shared.activeExpandedHeight
-        } else if NotchCoordinator.shared.isNotificationActive {
-            visualWidth = NotchCoordinator.shared.activeNotificationWidth
-            visualHeight = NotchCoordinator.shared.activeNotificationHeight
+            let w = coordinator.activeExpandedWidth
+            let h = coordinator.activeExpandedHeight
+            let x = profile.notchRect.midX - (w / 2.0)
+            let y = profile.screenFrame.maxY - h - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+            hoverRect = CGRect(x: x, y: y, width: w, height: h)
+        } else if coordinator.isNotificationActive {
+            let w = coordinator.activeNotificationWidth
+            let h = coordinator.activeNotificationHeight
+            let x = profile.notchRect.midX - (w / 2.0)
+            let y = profile.screenFrame.maxY - h - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+            hoverRect = CGRect(x: x, y: y, width: w, height: h)
         } else if MediaHUDCoordinator.shared.isAudioActive {
-            visualWidth = NotchCoordinator.shared.activeAudioCompactWidth
-            visualHeight = NotchCoordinator.shared.activeCompactHeight
+            // Audio compact wings — wider than bare notch
+            let w = coordinator.activeAudioCompactWidth
+            let h = coordinator.activeCompactHeight
+            let x = profile.notchRect.midX - (w / 2.0)
+            let y = profile.screenFrame.maxY - h - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
+            hoverRect = CGRect(x: x, y: y, width: w, height: h)
         } else {
-            visualWidth = NotchCoordinator.shared.currentCompactWidth
-            visualHeight = NotchCoordinator.shared.activeCompactHeight
+            // Compact idle: strictly the physical notch silhouette — no extra canvas padding
+            hoverRect = profile.notchRect
         }
 
-        let x = profile.notchRect.midX - (visualWidth / 2.0)
-        let y = profile.screenFrame.maxY - visualHeight - (profile.isVirtualIsland ? NotchGeometry.defaultVirtualTopPadding : 0)
-        let activeScreenRect = CGRect(x: x, y: y, width: visualWidth, height: visualHeight)
-        let extended = activeScreenRect.insetBy(dx: -4, dy: -4)
-        return extended.contains(mouseLocation)
+        return hoverRect.insetBy(dx: -4, dy: -4).contains(mouseLocation)
     }
 
     private func ensurePanelCreated() {
@@ -305,6 +329,13 @@ public final class NotchOverlayWindowController {
 /// Unused canvas space outside the active notch returns nil from hitTest, passing clicks straight through to windows behind.
 final class NotchHostingView<Content: View>: NSHostingView<Content> {
     private var trackingArea: NSTrackingArea?
+
+    /// Explicitly rebuild tracking areas now. Called by the window controller after each state transition
+    /// (compact ↔ expanded ↔ audio ↔ notification) so the tracking rect stays in sync with the
+    /// currently-visible notch shape rather than the full transparent canvas.
+    func refreshTrackingAreas() {
+        updateTrackingAreas()
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let coordinator = NotchCoordinator.shared
@@ -352,9 +383,42 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
         if let existing = trackingArea {
             removeTrackingArea(existing)
         }
+
+        // Build a tight tracking rect that matches the currently-visible notch shape.
+        // Using the full `bounds` (520×360 canvas) would fire mouseEntered for ANY cursor
+        // entry into the transparent overlay area — causing hover-expand even when the
+        // cursor is far from the physical notch cutout.
+        let coordinator = NotchCoordinator.shared
+        let isExpanded = (coordinator.expansionState == .expanded)
+        let isNotification = coordinator.isNotificationActive
+
+        let trackW: CGFloat
+        let trackH: CGFloat
+
+        if isExpanded {
+            trackW = coordinator.activeExpandedWidth
+            trackH = coordinator.activeExpandedHeight
+        } else if isNotification {
+            trackW = coordinator.activeNotificationWidth
+            trackH = coordinator.activeNotificationHeight
+        } else if MediaHUDCoordinator.shared.isAudioActive {
+            // Audio compact with wings
+            trackW = coordinator.activeAudioCompactWidth
+            trackH = coordinator.activeCompactHeight
+        } else {
+            // Compact idle — physical notch silhouette only
+            trackW = coordinator.currentCompactWidth
+            trackH = coordinator.activeCompactHeight
+        }
+
+        // The view is flipped (y=0 at top). Notch sits flush at the top-centre.
+        let viewBounds = self.bounds
+        let trackX = (viewBounds.width - trackW) / 2.0
+        let trackRect = CGRect(x: trackX, y: 0, width: trackW, height: trackH)
+
         let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            rect: trackRect,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
             owner: self,
             userInfo: nil
         )

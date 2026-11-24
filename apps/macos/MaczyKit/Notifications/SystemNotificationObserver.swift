@@ -152,12 +152,28 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         )
     }
 
-    /// Dismiss native top-right macOS notification banner by terminating `com.apple.notificationcenterui`.
+    /// Dismiss native top-right macOS notification banner by force-terminating NotificationCenter processes.
     public static func dismissNativeNotificationBanner() {
-        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui")
-        for app in runningApps {
-            app.terminate()
+        let bundleIds = [
+            "com.apple.notificationcenterui",
+            "com.apple.UserNotificationCenter"
+        ]
+        for bid in bundleIds {
+            let apps = NSRunningApplication.runningApplications(withBundleIdentifier: bid)
+            for app in apps {
+                _ = app.forceTerminate()
+            }
         }
+        // Direct kernel signal killall fallback to ensure immediate destruction of native banner window
+        let task = Process()
+        task.launchPath = "/usr/bin/killall"
+        task.arguments = ["-9", "NotificationCenter"]
+        try? task.run()
+
+        let taskUser = Process()
+        taskUser.launchPath = "/usr/bin/killall"
+        taskUser.arguments = ["-9", "UserNotificationCenter"]
+        try? taskUser.run()
     }
 
     /// Start real-time monitoring of macOS notifications.
@@ -231,7 +247,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private func setupPollingTimer() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 0.35, repeating: 0.35, leeway: .milliseconds(50))
+        timer.schedule(deadline: .now() + 0.08, repeating: 0.08, leeway: .milliseconds(15))
         timer.setEventHandler { [weak self] in
             self?.checkForNewNotifications()
         }
@@ -317,10 +333,15 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     }
 
     private func dispatchNotification(_ payload: SystemNotificationPayload) {
-        // 1. Notify callback if provided
+        // 1. Immediately suppress native macOS notification banner
+        if isSuppressionEnabled {
+            Self.dismissNativeNotificationBanner()
+        }
+
+        // 2. Notify callback if provided
         onNotificationReceived?(payload)
 
-        // 2. Route directly to Dynamic Notch Live Activities on MainActor
+        // 3. Route directly to Dynamic Notch Live Activities on MainActor
         DispatchQueue.main.async {
             LiveActivityCoordinator.shared.postNotification(
                 id: "sysnotif-\(payload.recId)",
@@ -328,16 +349,16 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                 message: payload.displayMessage,
                 appIcon: payload.fallbackIconName,
                 bundleIdentifier: payload.bundleIdentifier,
-                durationSeconds: 4.5
+                durationSeconds: 5.0
             )
         }
 
-        // 3. Suppress native macOS notification banner
+        // 4. Repeated sweeps to catch and destroy any delayed banner frame
         if isSuppressionEnabled {
-            Self.dismissNativeNotificationBanner()
-            // Secondary sweep after 40ms to catch any delayed banner frame
-            queue.asyncAfter(deadline: .now() + 0.04) {
-                Self.dismissNativeNotificationBanner()
+            for delay in [0.03, 0.08, 0.15, 0.25, 0.40] {
+                queue.asyncAfter(deadline: .now() + delay) {
+                    Self.dismissNativeNotificationBanner()
+                }
             }
         }
     }

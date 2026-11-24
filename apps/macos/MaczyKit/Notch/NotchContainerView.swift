@@ -66,8 +66,8 @@ public struct NotchContainerView: View {
             .background(Color.black)
             .clipShape(
                 DynamicNotchShape(
-                    cornerRadius: isExpanded ? 22 : 14,
-                    earRadius: profile.hasPhysicalNotch ? (isExpanded ? 14 : 12) : 0,
+                    cornerRadius: (isExpanded || hasActiveNotification) ? 22 : 14,
+                    earRadius: profile.hasPhysicalNotch ? ((isExpanded || hasActiveNotification) ? 14 : 12) : 0,
                     hasEars: profile.hasPhysicalNotch
                 )
             )
@@ -166,30 +166,32 @@ public struct NotchContainerView: View {
                         .padding(.bottom, 12)
 
                     } else if let activity = liveCoordinator.primaryActivity {
-                        HStack(spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
                             if let bundleId = activity.bundleIdentifier,
                                let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
                                 Image(nsImage: NSWorkspace.shared.icon(forFile: appUrl.path))
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .frame(width: 22, height: 22)
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(RoundedRectangle(cornerRadius: 7))
                             } else {
                                 Image(systemName: activity.iconName)
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 20, weight: .semibold))
                                     .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.brandLavender)
-                                    .frame(width: 24, alignment: .leading)
+                                    .frame(width: 32, height: 32, alignment: .center)
                             }
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(activity.title)
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(.white)
                                     .lineLimit(1)
                                 Text(activity.message)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.85))
-                                    .lineLimit(2)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.90))
+                                    .lineLimit(3)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
 
                             Spacer(minLength: 4)
@@ -204,8 +206,8 @@ public struct NotchContainerView: View {
                                     .foregroundColor(MaczyDesignTokens.statusRed)
                             }
                         }
-                        .padding(.horizontal, 26)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 14)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

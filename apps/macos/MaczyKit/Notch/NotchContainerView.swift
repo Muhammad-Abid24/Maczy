@@ -66,8 +66,8 @@ public struct NotchContainerView: View {
             .background(Color.black)
             .clipShape(
                 DynamicNotchShape(
-                    cornerRadius: isExpanded ? 22 : 12,
-                    earRadius: profile.hasPhysicalNotch ? (isExpanded ? 14 : 10) : 0,
+                    cornerRadius: isExpanded ? 22 : 14,
+                    earRadius: profile.hasPhysicalNotch ? (isExpanded ? 14 : 12) : 0,
                     hasEars: profile.hasPhysicalNotch
                 )
             )
@@ -209,12 +209,6 @@ public struct NotchContainerView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
-                .clipShape(DynamicNotchShape(
-                    cornerRadius: 22,
-                    earRadius: profile.hasPhysicalNotch ? 14 : 0,
-                    hasEars: profile.hasPhysicalNotch
-                ))
             } else {
                 // MARK: - Regular Compact Idle / Audio State
                 if mediaCoordinator.isAudioActive && !hasActiveNotification {
@@ -261,13 +255,8 @@ public struct NotchContainerView: View {
 
                 } else {
                     // Physical Notch Integration
-                    Color.black
+                    Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipShape(DynamicNotchShape(
-                            cornerRadius: 12,
-                            earRadius: 10,
-                            hasEars: true
-                        ))
                 }
             }
         }

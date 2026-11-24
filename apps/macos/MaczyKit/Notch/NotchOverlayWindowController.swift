@@ -72,11 +72,20 @@ public final class NotchOverlayWindowController {
         panel.setFrame(targetFrame, display: true, animate: false)
     }
 
+    /// Ensure the floating panel is sized to the maximum transparent canvas frame.
+    public func ensureCanvasSize(for profile: NotchScreenProfile) {
+        guard let panel = panel else { return }
+        let targetFrame = canvasRect(for: profile)
+        if panel.frame != targetFrame {
+            panel.setFrame(targetFrame, display: true, animate: false)
+        }
+    }
+
     /// Smoothly update state without triggering legacy 30 FPS NSWindow resize.
     /// Hardware GPU CoreAnimation inside SwiftUI renders the expansion at native display FPS (120Hz ProMotion).
     public func animateToState(_ state: NotchExpansionState, profile: NotchScreenProfile) {
         ensurePanelCreated()
-        guard let panel = panel else { return }
+        guard panel != nil else { return }
 
         if state == .expanded {
             startOutsideClickMonitoring()
@@ -84,10 +93,7 @@ public final class NotchOverlayWindowController {
             stopOutsideClickMonitoring()
         }
 
-        let canvas = canvasRect(for: profile)
-        if panel.frame != canvas {
-            panel.setFrame(canvas, display: true)
-        }
+        ensureCanvasSize(for: profile)
     }
 
     /// Target frame when a notification, volume, or brightness HUD is actively presenting.
@@ -116,65 +122,32 @@ public final class NotchOverlayWindowController {
         return CGRect(x: x, y: y, width: targetWidth, height: targetHeight)
     }
 
-    /// Smoothly animate panel into audio playback compact size (wings on both sides).
+    /// Adapts canvas for audio playback compact size; SwiftUI GPU spring handles 120 FPS wing expansion.
     public func animateToAudioCompactSize(profile: NotchScreenProfile) {
         ensurePanelCreated()
-        guard let panel = panel else { return }
         stopOutsideClickMonitoring()
-        let targetFrame = audioCompactRect(for: profile)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.30
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
-            panel.animator().setFrame(targetFrame, display: true)
-        }
+        ensureCanvasSize(for: profile)
     }
 
-    /// Smoothly animate panel into enlarged notification banner size.
+    /// Adapts canvas for enlarged notification banner size; SwiftUI GPU spring handles 120 FPS expansion.
     public func animateToNotificationSize(profile: NotchScreenProfile) {
         ensurePanelCreated()
-        guard let panel = panel else { return }
         stopOutsideClickMonitoring()
-        let targetFrame = notificationRect(for: profile)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.30
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
-            panel.animator().setFrame(targetFrame, display: true)
-        }
+        ensureCanvasSize(for: profile)
     }
 
-    /// Smoothly animate panel back to normal compact size.
+    /// Adapts canvas for normal compact size; SwiftUI GPU spring handles 120 FPS collapse.
     public func animateToCompactSize(profile: NotchScreenProfile, completion: (@MainActor () -> Void)? = nil) {
         ensurePanelCreated()
-        guard let panel = panel else {
-            completion?()
-            return
-        }
         stopOutsideClickMonitoring()
-        let targetFrame = compactRect(for: profile)
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            panel.animator().setFrame(targetFrame, display: true)
-        }, completionHandler: {
-            Task { @MainActor in
-                completion?()
-            }
-        })
+        ensureCanvasSize(for: profile)
+        completion?()
     }
 
-    /// Smoothly animate panel width in compact mode (e.g. during HUD toast presentation).
+    /// Adapts canvas for compact width changes.
     public func animateToCompactWidth(_ width: CGFloat, profile: NotchScreenProfile) {
         ensurePanelCreated()
-        guard let panel = panel else { return }
-        let baseRect = targetRect(for: .compact, profile: profile)
-        let newX = baseRect.midX - (width / 2.0)
-        let targetFrame = CGRect(x: newX, y: baseRect.minY, width: width, height: baseRect.height)
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            panel.animator().setFrame(targetFrame, display: true)
-        }
+        ensureCanvasSize(for: profile)
     }
 
     /// Handle simulated or event-based outside click testing. Returns true if outside and collapsed.
@@ -197,9 +170,8 @@ public final class NotchOverlayWindowController {
 
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self, let panel = self.panel else { return }
-                let clickLocation = NSEvent.mouseLocation
-                if !panel.frame.contains(clickLocation) {
+                guard let self = self, self.panel != nil else { return }
+                if !self.isMouseOverPanel() {
                     if let onOutsideClick = self.onOutsideClick {
                         onOutsideClick()
                     } else {
@@ -210,9 +182,8 @@ public final class NotchOverlayWindowController {
         }
 
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self = self, let panel = self.panel else { return event }
-            let clickLocation = NSEvent.mouseLocation
-            if !panel.frame.contains(clickLocation) {
+            guard let self = self, self.panel != nil else { return event }
+            if !self.isMouseOverPanel() {
                 if let onOutsideClick = self.onOutsideClick {
                     onOutsideClick()
                 } else {
@@ -358,7 +329,7 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
 
         let winBounds = self.bounds
         let visualX = (winBounds.width - visualWidth) / 2.0
-        let visualY = winBounds.height - visualHeight
+        let visualY: CGFloat = 0 // In NSHostingView, isFlipped == true, so the notch sits flush at y = 0
         let activeRect = CGRect(x: visualX, y: visualY, width: visualWidth, height: visualHeight)
 
         let interactiveRect = activeRect.insetBy(dx: -4, dy: -4)
@@ -394,11 +365,27 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         Task { @MainActor in
-            if NotchCoordinator.shared.isMouseOverNotchPanel() {
-                NotchCoordinator.shared.cancelScheduledCollapse()
-                if NotchCoordinator.shared.expansionState != .expanded {
-                    NotchCoordinator.shared.setExpansionState(.expanded)
+            let coordinator = NotchCoordinator.shared
+            if coordinator.isMouseOverNotchPanel() {
+                coordinator.cancelScheduledCollapse()
+                if coordinator.expansionState != .expanded {
+                    coordinator.setExpansionState(.expanded)
                 }
+            }
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        Task { @MainActor in
+            let coordinator = NotchCoordinator.shared
+            if coordinator.isMouseOverNotchPanel() {
+                coordinator.cancelScheduledCollapse()
+                if coordinator.expansionState != .expanded {
+                    coordinator.setExpansionState(.expanded)
+                }
+            } else if coordinator.expansionState == .expanded {
+                coordinator.scheduleCollapseIfMouseOutside(delay: 0.25)
             }
         }
     }
@@ -406,7 +393,7 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         Task { @MainActor in
-            NotchCoordinator.shared.scheduleCollapseIfMouseOutside()
+            NotchCoordinator.shared.scheduleCollapseIfMouseOutside(delay: 0.15)
         }
     }
 }

@@ -26,6 +26,7 @@ public final class NotchOverlayWindowController {
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
     private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
 
     /// Optional callback invoked when a click occurs outside the notch frame.
     public var onOutsideClick: (@MainActor () -> Void)?
@@ -40,6 +41,9 @@ public final class NotchOverlayWindowController {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = globalMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = localMouseMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }
@@ -232,21 +236,33 @@ public final class NotchOverlayWindowController {
     // and compares them against the exact physical notch rect, bypassing all tracking
     // area interference.
 
+    @MainActor
+    private func handleMouseMovedHover() {
+        let coordinator = NotchCoordinator.shared
+        if isMouseOverPanel() {
+            coordinator.cancelScheduledCollapse()
+            if coordinator.expansionState != .expanded {
+                coordinator.setExpansionState(.expanded)
+            }
+        } else if coordinator.expansionState == .expanded {
+            coordinator.scheduleCollapseIfMouseOutside(delay: 0.25)
+        }
+    }
+
     private func startMouseHoverMonitoring() {
-        guard globalMouseMonitor == nil else { return }
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                let coordinator = NotchCoordinator.shared
-                let overNotch = self.isMouseOverPanel()
-                if overNotch {
-                    coordinator.cancelScheduledCollapse()
-                    if coordinator.expansionState != .expanded {
-                        coordinator.setExpansionState(.expanded)
-                    }
-                } else if coordinator.expansionState == .expanded {
-                    coordinator.scheduleCollapseIfMouseOutside(delay: 0.25)
+        if globalMouseMonitor == nil {
+            globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handleMouseMovedHover()
                 }
+            }
+        }
+        if localMouseMonitor == nil {
+            localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+                Task { @MainActor [weak self] in
+                    self?.handleMouseMovedHover()
+                }
+                return event
             }
         }
     }
@@ -255,6 +271,10 @@ public final class NotchOverlayWindowController {
         if let monitor = globalMouseMonitor {
             NSEvent.removeMonitor(monitor)
             globalMouseMonitor = nil
+        }
+        if let monitor = localMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMouseMonitor = nil
         }
     }
 
@@ -329,7 +349,10 @@ public final class NotchOverlayWindowController {
             hoverRect = profile.notchRect
         }
 
-        return hoverRect.insetBy(dx: -4, dy: -4).contains(mouseLocation)
+        if isExpanded {
+            return hoverRect.insetBy(dx: -4, dy: -4).contains(mouseLocation)
+        }
+        return hoverRect.contains(mouseLocation)
     }
 
     private func ensurePanelCreated() {

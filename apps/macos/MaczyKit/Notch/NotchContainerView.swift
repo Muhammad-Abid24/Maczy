@@ -78,16 +78,6 @@ public struct NotchContainerView: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: isExpanded)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: mediaCoordinator.isAudioActive)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hasActiveNotification)
-        .onHover { hovering in
-            if hovering {
-                coordinator.cancelScheduledCollapse()
-                if coordinator.expansionState != .expanded {
-                    coordinator.setExpansionState(.expanded)
-                }
-            } else {
-                coordinator.scheduleCollapseIfMouseOutside()
-            }
-        }
     }
 
     private var hasActiveNotification: Bool {

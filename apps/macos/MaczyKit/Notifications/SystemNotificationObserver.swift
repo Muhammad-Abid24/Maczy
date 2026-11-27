@@ -114,7 +114,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private var suppressBannerUntil: CFAbsoluteTime = 0
     private var lastWalStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
     private var lastDbStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
-    private var recentAXSignatures: [(key: String, timestamp: CFAbsoluteTime)] = []
+    private var recentAXRecords: [(title: String, body: String, allTexts: String, timestamp: CFAbsoluteTime)] = []
     private var nextSyntheticAXRecId: Int64 = -1
 
     public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
@@ -260,39 +260,112 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         "close", "clear", "clear all", "options", "show more", "show less", "reply", "view", "actions"
     ]
 
-    private static func inferBundleIdentifier(fromAppName name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = trimmed.lowercased()
-        if lower.contains("telegram") { return "ru.keepcoder.telegram" }
-        if lower.contains("whatsapp") { return "net.whatsapp.whatsapp" }
-        if lower.contains("slack") { return "com.tinyspeck.slackmacgap" }
-        if lower.contains("mail") { return "com.apple.mail" }
-        if lower.contains("messages") { return "com.apple.MobileSMS" }
-        if lower.contains("calendar") { return "com.apple.iCal" }
-        if lower.contains("reminders") { return "com.apple.reminders" }
-        if lower.contains("script editor") { return "com.apple.scripteditor2" }
-        if lower.contains("discord") { return "com.hnc.Discord" }
+    private static let knownAppBundleIds: [String: String] = [
+        "telegram": "ru.keepcoder.telegram",
+        "whatsapp": "net.whatsapp.whatsapp",
+        "slack": "com.tinyspeck.slackmacgap",
+        "mail": "com.apple.mail",
+        "messages": "com.apple.MobileSMS",
+        "calendar": "com.apple.iCal",
+        "reminders": "com.apple.reminders",
+        "script editor": "com.apple.scripteditor2",
+        "discord": "com.hnc.Discord",
+        "safari": "com.apple.Safari",
+        "google chrome": "com.google.Chrome",
+        "chrome": "com.google.Chrome",
+        "brave browser": "com.brave.Browser",
+        "brave": "com.brave.Browser",
+        "arc": "company.thebrowser.Browser",
+        "finder": "com.apple.finder",
+        "notes": "com.apple.Notes",
+        "facetime": "com.apple.FaceTime",
+        "xcode": "com.apple.dt.Xcode",
+        "terminal": "com.apple.Terminal",
+        "visual studio code": "com.microsoft.VSCode",
+        "system settings": "com.apple.systempreferences"
+    ]
 
-        if let match = NSWorkspace.shared.runningApplications.first(where: {
-            ($0.localizedName ?? "").caseInsensitiveCompare(trimmed) == .orderedSame
-        }), let bid = match.bundleIdentifier {
-            return bid
+    private static let installedAppBundleMap: [String: String] = {
+        var map: [String: String] = [:]
+        let appDirs = [
+            "/Applications",
+            "/System/Applications",
+            "/System/Applications/Utilities",
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path
+        ]
+        for dir in appDirs {
+            guard let items = try? FileManager.default.contentsOfDirectory(atPath: dir) else { continue }
+            for item in items where item.hasSuffix(".app") {
+                let appURL = URL(fileURLWithPath: dir).appendingPathComponent(item)
+                if let bundle = Bundle(url: appURL), let bid = bundle.bundleIdentifier {
+                    let displayName = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                        ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                        ?? String(item.dropLast(4))
+                    map[displayName.lowercased()] = bid
+                    map[String(item.dropLast(4)).lowercased()] = bid
+                }
+            }
         }
-        return trimmed.isEmpty ? "com.apple.notificationcenter" : "app.\(lower.replacingOccurrences(of: " ", with: "."))"
+        return map
+    }()
+
+    private static func resolveBundleIdentifier(fromCandidates candidates: [String]) -> String? {
+        for raw in candidates {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let lower = trimmed.lowercased()
+
+            if let known = knownAppBundleIds[lower],
+               NSWorkspace.shared.urlForApplication(withBundleIdentifier: known) != nil {
+                return known
+            }
+            for (k, bid) in knownAppBundleIds where lower.contains(k) {
+                if NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid) != nil {
+                    return bid
+                }
+            }
+            if let running = NSWorkspace.shared.runningApplications.first(where: {
+                ($0.localizedName ?? "").caseInsensitiveCompare(trimmed) == .orderedSame
+            }), let bid = running.bundleIdentifier,
+               NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid) != nil {
+                return bid
+            }
+            if let installed = installedAppBundleMap[lower],
+               NSWorkspace.shared.urlForApplication(withBundleIdentifier: installed) != nil {
+                return installed
+            }
+        }
+        return nil
     }
 
-    private static func collectStaticTexts(
+    private static func collectAXBannerData(
         from element: AXUIElement,
         depth: Int = 0,
         nodeCount: inout Int,
-        into results: inout [String]
+        texts: inout [String],
+        appCandidates: inout [String]
     ) {
-        guard depth < 10, nodeCount < 120 else { return }
+        guard depth < 10, nodeCount < 140 else { return }
         nodeCount += 1
 
         var roleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
         let role = roleRef as? String ?? ""
+
+        for attr in [kAXTitleAttribute as CFString, kAXDescriptionAttribute as CFString] {
+            var ref: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, attr, &ref) == .success,
+               let str = ref as? String {
+                let clean = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !clean.isEmpty && !axActionNoiseLabels.contains(clean.lowercased()) {
+                    // macOS often formats container AXDescription as "AppName, Title, Body"
+                    if let firstSegment = clean.split(separator: ",").first {
+                        appCandidates.append(String(firstSegment).trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                    appCandidates.append(clean)
+                }
+            }
+        }
 
         if role == (kAXStaticTextRole as String) {
             var valRef: CFTypeRef?
@@ -300,7 +373,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             if let text = valRef as? String {
                 let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !clean.isEmpty && !axActionNoiseLabels.contains(clean.lowercased()) {
-                    results.append(clean)
+                    texts.append(clean)
                 }
             }
             return
@@ -310,7 +383,13 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
            let children = childrenRef as? [AXUIElement] {
             for child in children {
-                collectStaticTexts(from: child, depth: depth + 1, nodeCount: &nodeCount, into: &results)
+                collectAXBannerData(
+                    from: child,
+                    depth: depth + 1,
+                    nodeCount: &nodeCount,
+                    texts: &texts,
+                    appCandidates: &appCandidates
+                )
             }
         }
     }
@@ -364,24 +443,40 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             let targets = containers.isEmpty ? [window] : containers
             for target in targets {
                 var texts: [String] = []
+                var appCandidates: [String] = []
                 var textNodeCount = 0
-                Self.collectStaticTexts(from: target, nodeCount: &textNodeCount, into: &texts)
+                Self.collectAXBannerData(
+                    from: target,
+                    nodeCount: &textNodeCount,
+                    texts: &texts,
+                    appCandidates: &appCandidates
+                )
                 guard !texts.isEmpty else { continue }
 
-                let bundleId: String
+                // Include first static text as an app candidate when 3+ lines are present
+                if texts.count >= 3 {
+                    appCandidates.insert(texts[0], at: 0)
+                } else {
+                    appCandidates.append(texts[0])
+                }
+
+                // Resolve a real macOS bundleIdentifier so NotchContainerView always renders the app icon
+                let resolvedBundleId = Self.resolveBundleIdentifier(fromCandidates: appCandidates)
+                guard let bundleId = resolvedBundleId else {
+                    // Defer to SQLite record if AX didn't expose an identifiable app bundle
+                    continue
+                }
+
                 let title: String
                 let body: String
 
-                if texts.count >= 3 {
-                    bundleId = Self.inferBundleIdentifier(fromAppName: texts[0])
+                if texts.count >= 3 && Self.resolveBundleIdentifier(fromCandidates: [texts[0]]) != nil {
                     title = texts[1]
                     body = texts.dropFirst(2).joined(separator: " ")
-                } else if texts.count == 2 {
-                    bundleId = "com.apple.notificationcenter"
+                } else if texts.count >= 2 {
                     title = texts[0]
-                    body = texts[1]
+                    body = texts.dropFirst(1).joined(separator: " ")
                 } else {
-                    bundleId = "com.apple.notificationcenter"
                     title = texts[0]
                     body = ""
                 }
@@ -404,23 +499,41 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         return payloads
     }
 
-    private func signatureKey(for payload: SystemNotificationPayload) -> String {
-        let t = payload.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let m = payload.displayMessage.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return "\(t)|\(m)"
+    private static func normalizedText(_ raw: String) -> String {
+        raw.lowercased()
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private func markAndCheckDuplicateAX(_ payload: SystemNotificationPayload, recordIfNew: Bool) -> Bool {
-        let key = signatureKey(for: payload)
+        let t = Self.normalizedText(payload.displayTitle)
+        let m = Self.normalizedText(payload.displayMessage)
+        let combined = Self.normalizedText("\(payload.displayTitle) \(payload.displayMessage)")
         let now = CFAbsoluteTimeGetCurrent()
+
         lock.lock()
         defer { lock.unlock() }
-        recentAXSignatures.removeAll { now - $0.timestamp > 15.0 }
-        if recentAXSignatures.contains(where: { $0.key == key }) {
+        recentAXRecords.removeAll { now - $0.timestamp > 20.0 }
+
+        let isDup = recentAXRecords.contains { rec in
+            if rec.title == t && rec.body == m {
+                return true
+            }
+            if !m.isEmpty && m.count >= 3 && (rec.allTexts.contains(m) || m.contains(rec.body) && !rec.body.isEmpty) {
+                return true
+            }
+            if !t.isEmpty && t.count >= 3 && rec.allTexts.contains(t) && (m.isEmpty || rec.allTexts.contains(m)) {
+                return true
+            }
+            return false
+        }
+
+        if isDup {
             return true
         }
         if recordIfNew {
-            recentAXSignatures.append((key: key, timestamp: now))
+            recentAXRecords.append((title: t, body: m, allTexts: combined, timestamp: now))
         }
         return false
     }

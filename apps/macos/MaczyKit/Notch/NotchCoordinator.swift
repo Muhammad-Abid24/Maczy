@@ -24,6 +24,7 @@ public final class NotchCoordinator: ObservableObject {
     @Published public private(set) var isNotificationActive: Bool = false
     private var isTemporarilyVisibleForHUD: Bool = false
     private var notificationCancellable: AnyCancellable?
+    private var mediaCancellable: AnyCancellable?
 
     // MARK: - Physical Notch Custom Dimensions (Persisted via UserDefaults)
     @Published public var customPhysicalCompactWidth: CGFloat? {
@@ -338,6 +339,50 @@ public final class NotchCoordinator: ObservableObject {
             let hasNotification = (hud != nil || activity != nil || tws != nil)
             self?.handleNotificationStateChanged(hasNotification)
         }
+
+        // Automatically adapt notch width when media or audio output is active
+        self.mediaCancellable = MediaHUDCoordinator.shared.$isAudioActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isAudioActive in
+                self?.handleAudioActivityStateChanged(isAudioActive)
+            }
+
+        // Start system notification monitoring outside unit test runner
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+           ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+           NSClassFromString("XCTestCase") == nil {
+            SystemNotificationObserver.shared.startObserving()
+        }
+    }
+
+    public func handleAudioActivityStateChanged(_ isAudioActive: Bool) {
+        guard !isNotificationActive else { return }
+
+        if isAudioActive {
+            if !isOverlayVisible {
+                isTemporarilyVisibleForHUD = true
+                windowController.setOverlayVisible(true)
+            }
+            if expansionState == .compact {
+                windowController.animateToAudioCompactSize(profile: activeProfile)
+            } else if expansionState == .expanded {
+                windowController.animateToState(.expanded, profile: activeProfile)
+            }
+        } else {
+            if expansionState == .compact {
+                windowController.animateToCompactSize(profile: activeProfile) { [weak self] in
+                    guard let self = self else { return }
+                    if self.isTemporarilyVisibleForHUD {
+                        self.isTemporarilyVisibleForHUD = false
+                        if !self.isOverlayVisible {
+                            self.windowController.setOverlayVisible(false)
+                        }
+                    }
+                }
+            } else if expansionState == .expanded {
+                windowController.animateToState(.expanded, profile: activeProfile)
+            }
+        }
     }
 
     public func handleNotificationStateChanged(_ hasNotification: Bool) {
@@ -354,12 +399,16 @@ public final class NotchCoordinator: ObservableObject {
             }
         } else {
             if expansionState == .compact {
-                windowController.animateToCompactSize(profile: activeProfile) { [weak self] in
-                    guard let self = self else { return }
-                    if self.isTemporarilyVisibleForHUD {
-                        self.isTemporarilyVisibleForHUD = false
-                        if !self.isOverlayVisible {
-                            self.windowController.setOverlayVisible(false)
+                if MediaHUDCoordinator.shared.isAudioActive {
+                    windowController.animateToAudioCompactSize(profile: activeProfile)
+                } else {
+                    windowController.animateToCompactSize(profile: activeProfile) { [weak self] in
+                        guard let self = self else { return }
+                        if self.isTemporarilyVisibleForHUD {
+                            self.isTemporarilyVisibleForHUD = false
+                            if !self.isOverlayVisible {
+                                self.windowController.setOverlayVisible(false)
+                            }
                         }
                     }
                 }
@@ -434,6 +483,8 @@ public final class NotchCoordinator: ObservableObject {
         self.expansionState = state
         if state == .compact && isNotificationActive {
             windowController.animateToNotificationSize(profile: activeProfile)
+        } else if state == .compact && MediaHUDCoordinator.shared.isAudioActive {
+            windowController.animateToAudioCompactSize(profile: activeProfile)
         } else {
             windowController.animateToState(state, profile: activeProfile)
         }
@@ -442,5 +493,51 @@ public final class NotchCoordinator: ObservableObject {
     /// Show or hide the physical/virtual notch overlay panel.
     public func toggleOverlay() {
         isOverlayVisible.toggle()
+    }
+
+    // MARK: - Hover Lifecycle & Smooth Debounced Collapse
+    private var scheduledCollapseTask: Task<Void, Never>? = nil
+
+    /// Cancels any scheduled collapse timeout when the cursor re-enters the notch.
+    public func cancelScheduledCollapse() {
+        scheduledCollapseTask?.cancel()
+        scheduledCollapseTask = nil
+    }
+
+    /// Schedules a collapse after a graceful debounce, only collapsing if the cursor is truly outside the notch panel.
+    public func scheduleCollapseIfMouseOutside(delay: TimeInterval = 0.25) {
+        cancelScheduledCollapse()
+        scheduledCollapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self = self, !Task.isCancelled else { return }
+            if !self.isMouseOverNotchPanel() {
+                self.setExpansionState(.compact)
+            }
+        }
+    }
+
+    /// Returns whether the cursor is currently physically over the overlay panel.
+    public func isMouseOverNotchPanel() -> Bool {
+        return windowController.isMouseOverPanel()
+    }
+
+    // MARK: - Dynamic Canvas Dimensions for 120 FPS GPU Render Pipeline
+    public var activeAudioCompactWidth: CGFloat {
+        windowController.audioCompactRect(for: activeProfile).width
+    }
+    public var activeCompactHeight: CGFloat {
+        activeProfile.notchRect.height
+    }
+    public var activeNotificationWidth: CGFloat {
+        windowController.notificationRect(for: activeProfile).width
+    }
+    public var activeNotificationHeight: CGFloat {
+        windowController.notificationRect(for: activeProfile).height
+    }
+    public var activeExpandedWidth: CGFloat {
+        windowController.expandedRect(for: activeProfile).width
+    }
+    public var activeExpandedHeight: CGFloat {
+        windowController.expandedRect(for: activeProfile).height
     }
 }

@@ -11,26 +11,120 @@ public protocol MediaRemoteProviderProtocol: Sendable {
     func previousTrack() async
 }
 
-/// Native macOS provider querying active players (Music, Spotify) asynchronously.
+/// Native macOS provider querying active players (Music, Spotify, browsers) asynchronously.
 public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
+    private typealias MRGetNowPlayingInfoFunc = @convention(c) (DispatchQueue, @escaping ([String: Any]) -> Void) -> Void
+
     public init() {}
 
+    private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil ||
+        NSClassFromString("XCTestCase") != nil
+    }
+
     public func fetchNowPlaying() async -> NowPlayingItem {
-        // 1. Check if Apple Music is running
+        // Avoid calling MediaRemote XPC / AppleScript in headless XCTest runners where
+        // completion callbacks can hang indefinitely.
+        if Self.isRunningTests {
+            return .idle
+        }
+
+        // 1. Direct MediaRemote query (fastest, supports YouTube in browsers, Music, Spotify)
+        if let remoteTrack = await queryMediaRemote() {
+            return remoteTrack
+        }
+
+        // 2. Check if Apple Music is running
         if isAppRunning(bundleId: "com.apple.Music") {
             if let track = await queryMusicPlayer() {
                 return track
             }
         }
 
-        // 2. Check if Spotify is running
+        // 3. Check if Spotify is running
         if isAppRunning(bundleId: "com.spotify.client") {
             if let track = await querySpotifyPlayer() {
                 return track
             }
         }
 
+        // 4. Check web browsers (Brave, Chrome, Safari, Edge, Arc)
+        if let browserTrack = await queryBrowserMedia() {
+            return browserTrack
+        }
+
         return .idle
+    }
+
+    /// Asynchronously queries whether the system MediaRemote application is actively playing media.
+    public static func checkIsApplicationPlaying() async -> Bool {
+        await withCheckedContinuation { continuation in
+            guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY),
+                  let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying") else {
+                continuation.resume(returning: false)
+                return
+            }
+            typealias MRIsPlayingFunc = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
+            let fn = unsafeBitCast(sym, to: MRIsPlayingFunc.self)
+            fn(DispatchQueue.global(qos: .userInteractive)) { playing in
+                continuation.resume(returning: playing)
+            }
+        }
+    }
+
+    private func queryMediaRemote() async -> NowPlayingItem? {
+        let appPlaying = await Self.checkIsApplicationPlaying()
+        return await withCheckedContinuation { continuation in
+            guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY),
+                  let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else {
+                continuation.resume(returning: nil)
+                return
+            }
+            let getInfo = unsafeBitCast(sym, to: MRGetNowPlayingInfoFunc.self)
+            getInfo(DispatchQueue.global(qos: .userInteractive)) { info in
+                guard !info.isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let title = info["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
+                guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let artist = info["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? "Media"
+                let album = info["kMRMediaRemoteNowPlayingInfoAlbum"] as? String
+                let duration = info["kMRMediaRemoteNowPlayingInfoDuration"] as? Double
+                let elapsed = info["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double
+                let rate = info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? (info["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Int).map(Double.init) ?? 0.0
+                var isPlaying = (rate > 0.01)
+                if !appPlaying {
+                    isPlaying = false
+                }
+
+                var icon = "play.rectangle.fill"
+                let titleLower = title.lowercased()
+                let artistLower = artist.lowercased()
+                if titleLower.contains("youtube") || artistLower.contains("youtube") || titleLower.contains("video") || duration == nil {
+                    icon = "play.rectangle.fill"
+                } else if let dur = duration, dur > 0 {
+                    icon = "music.note"
+                }
+
+                let item = NowPlayingItem(
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    isPlaying: isPlaying,
+                    duration: duration,
+                    elapsedTime: elapsed,
+                    artworkIconName: icon
+                )
+                continuation.resume(returning: item)
+            }
+        }
     }
 
     public func play() async {
@@ -38,6 +132,8 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             _ = await runAppleScript("tell application \"Music\" to play")
         } else if isAppRunning(bundleId: "com.spotify.client") {
             _ = await runAppleScript("tell application \"Spotify\" to play")
+        } else {
+            Self.sendSystemMediaKey(key: 16) // NX_KEYTYPE_PLAY
         }
     }
 
@@ -46,6 +142,8 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             _ = await runAppleScript("tell application \"Music\" to pause")
         } else if isAppRunning(bundleId: "com.spotify.client") {
             _ = await runAppleScript("tell application \"Spotify\" to pause")
+        } else {
+            Self.sendSystemMediaKey(key: 16) // NX_KEYTYPE_PLAY
         }
     }
 
@@ -54,6 +152,8 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             _ = await runAppleScript("tell application \"Music\" to playpause")
         } else if isAppRunning(bundleId: "com.spotify.client") {
             _ = await runAppleScript("tell application \"Spotify\" to playpause")
+        } else {
+            Self.sendSystemMediaKey(key: 16) // NX_KEYTYPE_PLAY
         }
     }
 
@@ -62,6 +162,8 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             _ = await runAppleScript("tell application \"Music\" to next track")
         } else if isAppRunning(bundleId: "com.spotify.client") {
             _ = await runAppleScript("tell application \"Spotify\" to next track")
+        } else {
+            Self.sendSystemMediaKey(key: 19) // NX_KEYTYPE_FAST
         }
     }
 
@@ -70,11 +172,144 @@ public struct NativeMediaRemoteProvider: MediaRemoteProviderProtocol {
             _ = await runAppleScript("tell application \"Music\" to previous track")
         } else if isAppRunning(bundleId: "com.spotify.client") {
             _ = await runAppleScript("tell application \"Spotify\" to previous track")
+        } else {
+            Self.sendSystemMediaKey(key: 20) // NX_KEYTYPE_REWIND
         }
+    }
+
+    /// Dispatches hardware system media keys universally recognized by macOS across all apps and browsers.
+    public static func sendSystemMediaKey(key: Int32) {
+        func doKey(down: Bool) {
+            let flags: NSEvent.ModifierFlags = down ? [.init(rawValue: 0xa00)] : [.init(rawValue: 0xb00)]
+            let data1 = Int((key << 16) | (down ? 0xa00 : 0xb00))
+            let event = NSEvent.otherEvent(
+                with: .systemDefined,
+                location: .zero,
+                modifierFlags: flags,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                subtype: 8,
+                data1: data1,
+                data2: -1
+            )
+            event?.cgEvent?.post(tap: .cghidEventTap)
+        }
+        doKey(down: true)
+        doKey(down: false)
     }
 
     private func isAppRunning(bundleId: String) -> Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty
+    }
+
+    private func queryBrowserMedia() async -> NowPlayingItem? {
+        let browsers: [(bundleId: String, name: String)] = [
+            ("com.brave.Browser", "Brave"),
+            ("com.google.Chrome", "Google Chrome"),
+            ("com.apple.Safari", "Safari"),
+            ("com.microsoft.edgemac", "Microsoft Edge"),
+            ("company.thebrowser.Browser", "Arc")
+        ]
+
+        for b in browsers {
+            if isAppRunning(bundleId: b.bundleId) {
+                if let item = await querySingleBrowser(bundleId: b.bundleId, browserName: b.name) {
+                    return item
+                }
+            }
+        }
+        return nil
+    }
+
+    private func querySingleBrowser(bundleId: String, browserName: String) async -> NowPlayingItem? {
+        let script: String
+        if bundleId == "com.apple.Safari" {
+            script = """
+            tell application "Safari"
+                if (count of windows) = 0 then return ""
+                repeat with w in windows
+                    set t to current tab of w
+                    set u to (URL of t) as text
+                    if u contains "youtube.com/watch" or u contains "music.youtube" or u contains "soundcloud" or u contains "spotify.com" then
+                        return (name of t) & "|||" & u
+                    end if
+                end repeat
+                return ""
+            end tell
+            """
+        } else {
+            script = """
+            tell application id "\(bundleId)"
+                if (count of windows) = 0 then return ""
+                repeat with w in windows
+                    set t to active tab of w
+                    set u to (URL of t) as text
+                    if u contains "youtube.com/watch" or u contains "music.youtube" or u contains "soundcloud" or u contains "spotify.com" then
+                        return (title of t) & "|||" & u
+                    end if
+                end repeat
+                return ""
+            end tell
+            """
+        }
+
+        guard let output = await runAppleScript(script), !output.isEmpty else { return nil }
+        let parts = output.components(separatedBy: "|||")
+        guard !parts.isEmpty else { return nil }
+        let rawTitle = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawTitle.isEmpty else { return nil }
+
+        let parsed = parseBrowserMediaTitle(rawTitle, browserName: browserName)
+        let isPlaying = await Self.checkIsApplicationPlaying()
+
+        return NowPlayingItem(
+            title: parsed.title,
+            artist: parsed.artist,
+            album: nil,
+            isPlaying: isPlaying,
+            duration: nil,
+            elapsedTime: nil,
+            artworkIconName: parsed.icon
+        )
+    }
+
+    private func parseBrowserMediaTitle(_ rawTitle: String, browserName: String) -> (title: String, artist: String, icon: String) {
+        var title = rawTitle
+        // Strip leading notification badge like "(1) " or "(99+) "
+        if let badgeRange = title.range(of: "^\\([0-9+]+\\)\\s*", options: .regularExpression) {
+            title.removeSubrange(badgeRange)
+        }
+
+        var artist = "\(browserName) Audio"
+        var icon = "play.rectangle.fill"
+
+        if title.hasSuffix(" - YouTube") {
+            title = String(title.dropLast(" - YouTube".count))
+            artist = "YouTube • \(browserName)"
+            icon = "play.rectangle.fill"
+        } else if title.hasSuffix(" - YouTube Music") {
+            title = String(title.dropLast(" - YouTube Music".count))
+            artist = "YouTube Music"
+            icon = "music.note"
+        } else if title.contains("SoundCloud") {
+            artist = "SoundCloud • \(browserName)"
+            icon = "waveform"
+        } else if title.contains("Spotify") {
+            artist = "Spotify Web"
+            icon = "music.note.list"
+        }
+
+        if title.contains(" - ") {
+            let parts = title.components(separatedBy: " - ")
+            if parts.count == 2 {
+                artist = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                title = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (cleanTitle.isEmpty ? "Media Stream" : cleanTitle, artist, icon)
     }
 
     private func queryMusicPlayer() async -> NowPlayingItem? {

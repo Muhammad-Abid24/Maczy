@@ -238,4 +238,103 @@ final class MediaHUDTests: XCTestCase {
         XCTAssertNil(SystemHUDCoordinator.shared.activeHUD)
         XCTAssertFalse(coordinator.isOverlayVisible)
     }
+
+    func testAudioOutputDetectorActiveDetection() {
+        let detector = MockAudioOutputDetector(initialRunning: false, appName: "Safari", iconName: "safari.fill")
+        XCTAssertFalse(detector.isAudioOutputRunning())
+        XCTAssertEqual(detector.activeAudioApplicationName().name, "Safari")
+
+        detector.simulateAudioState(isRunning: true, appName: "Google Chrome", iconName: "globe")
+        XCTAssertTrue(detector.isAudioOutputRunning())
+        XCTAssertEqual(detector.activeAudioApplicationName().name, "Google Chrome")
+    }
+
+    @MainActor
+    func testMediaHUDCoordinatorAudioActiveIntegration() async {
+        let mediaMock = MockMediaRemoteProvider(initialItem: .idle)
+        let audioMock = MockAudioOutputDetector(initialRunning: false, appName: "Safari", iconName: "safari.fill")
+        let coordinator = MediaHUDCoordinator(provider: mediaMock, audioDetector: audioMock, autoStartMonitoring: false)
+
+        await coordinator.refreshNowPlaying()
+        XCTAssertFalse(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isAudioPlaying)
+
+        // Simulate browser audio starts playing (e.g. YouTube in Safari)
+        audioMock.simulateAudioState(isRunning: true, appName: "Safari", iconName: "safari.fill")
+        await coordinator.refreshNowPlaying()
+
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertTrue(coordinator.isAudioPlaying)
+        XCTAssertEqual(coordinator.currentTrack.title, "Safari")
+        XCTAssertEqual(coordinator.currentTrack.artist, "Audio Output")
+
+        // Simulate audio stops (pause state)
+        audioMock.simulateAudioState(isRunning: false)
+        await coordinator.refreshNowPlaying()
+
+        // Track is paused: remains active in notch for resume, but spectrum is stopped and isPlaying is false
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isAudioPlaying)
+        XCTAssertFalse(coordinator.currentTrack.isPlaying)
+    }
+
+    @MainActor
+    func testMediaHUDCoordinatorOneMinuteDismissal() async {
+        let mediaMock = MockMediaRemoteProvider(initialItem: .idle)
+        let audioMock = MockAudioOutputDetector(initialRunning: true, appName: "Safari", iconName: "safari.fill")
+        let coordinator = MediaHUDCoordinator(provider: mediaMock, audioDetector: audioMock, autoStartMonitoring: false)
+        XCTAssertEqual(MediaHUDCoordinator.pausedAudioDismissalTimeout, 60.0)
+        coordinator.customDismissalTimeout = 0.05 // 50ms for unit test
+
+        await coordinator.refreshNowPlaying()
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertTrue(coordinator.isAudioPlaying)
+
+        // Audio stops (paused)
+        audioMock.simulateAudioState(isRunning: false)
+        await coordinator.refreshNowPlaying()
+
+        // Immediately paused: activity is kept in notch for quick resume, spectrum is stopped
+        XCTAssertTrue(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isAudioPlaying)
+        XCTAssertFalse(coordinator.currentTrack.isPlaying)
+
+        // After timeout elapses without resuming, activity is dismissed from notch
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertFalse(coordinator.isAudioActive)
+        XCTAssertFalse(coordinator.isMediaActive)
+        XCTAssertEqual(coordinator.currentTrack, .idle)
+    }
+
+    @MainActor
+    func testAudioCompactRectGeometry() {
+        let profile = NotchScreenProfile.fallback
+        let controller = NotchOverlayWindowController()
+
+        let compact = controller.compactRect(for: profile, isAudioActive: false)
+        let audioCompact = controller.compactRect(for: profile, isAudioActive: true)
+
+        XCTAssertGreaterThan(audioCompact.width, compact.width)
+        XCTAssertEqual(audioCompact.height, compact.height)
+        XCTAssertEqual(audioCompact.midX, compact.midX, accuracy: 0.1)
+    }
+
+    @MainActor
+    func testExpandedRectDynamicHeightWithActiveMedia() {
+        let profile = NotchScreenProfile.fallback
+        let controller = NotchOverlayWindowController()
+
+        let baseExpanded = controller.expandedRect(for: profile, isMediaActive: false)
+        XCTAssertGreaterThanOrEqual(baseExpanded.width, 480.0)
+        XCTAssertGreaterThanOrEqual(baseExpanded.height, 195.0)
+
+        let mediaExpanded = controller.expandedRect(for: profile, isMediaActive: true)
+        XCTAssertGreaterThan(mediaExpanded.height, baseExpanded.height)
+    }
+
+    func testSystemMediaKeyExecutionSafety() {
+        NativeMediaRemoteProvider.sendSystemMediaKey(key: 16)
+        // Passes if no exception or memory violation occurs
+        XCTAssertTrue(true)
+    }
 }

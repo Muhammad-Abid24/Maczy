@@ -21,12 +21,13 @@ public final class LiveActivityCoordinator: ObservableObject {
         title: String,
         message: String,
         appIcon: String = "bell.fill",
+        bundleIdentifier: String? = nil,
         durationSeconds: TimeInterval = 4.0
     ) {
         let expiration = Date().addingTimeInterval(durationSeconds)
         let item = LiveActivityItem(
             id: id,
-            type: .notification(title: title, message: message, appIcon: appIcon),
+            type: .notification(title: title, message: message, appIcon: appIcon, bundleIdentifier: bundleIdentifier),
             priority: 100,
             expirationDate: expiration
         )

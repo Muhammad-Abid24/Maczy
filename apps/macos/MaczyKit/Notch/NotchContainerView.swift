@@ -11,8 +11,6 @@ public struct NotchContainerView: View {
     @ObservedObject var clipboardManager: ClipboardManager = .shared
     @ObservedObject var windowSnapManager: WindowSnapManager = .shared
     @ObservedObject var twsCoordinator: TWSNotchCoordinator = .shared
-    @State private var isHovered: Bool = false
-    @State private var collapseTask: Task<Void, Never>? = nil
 
     public init(coordinator: NotchCoordinator) {
         self.coordinator = coordinator
@@ -31,37 +29,55 @@ public struct NotchContainerView: View {
         coordinator.expansionState == .expanded
     }
 
+    private var activeWidth: CGFloat {
+        if isExpanded {
+            return coordinator.activeExpandedWidth
+        } else if hasActiveNotification {
+            return coordinator.activeNotificationWidth
+        } else if mediaCoordinator.isAudioActive {
+            return coordinator.activeAudioCompactWidth
+        } else {
+            return coordinator.currentCompactWidth
+        }
+    }
+
+    private var activeHeight: CGFloat {
+        if isExpanded {
+            return coordinator.activeExpandedHeight
+        } else if hasActiveNotification {
+            return coordinator.activeNotificationHeight
+        } else {
+            return coordinator.currentCompactHeight
+        }
+    }
+
     public var body: some View {
-        ZStack {
-            if isExpanded {
-                expandedIslandView
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.85, anchor: .top).combined(with: .opacity),
-                        removal: .scale(scale: 0.9, anchor: .top).combined(with: .opacity)
-                    ))
-            } else {
-                compactNotchView
-                    .transition(.opacity)
-            }
-        }
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: isExpanded)
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasActiveNotification)
-        .onHover { hovering in
-            isHovered = hovering
-            collapseTask?.cancel()
-            if hovering {
-                if coordinator.expansionState != .expanded {
-                    coordinator.setExpansionState(.expanded)
-                }
-            } else {
-                collapseTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 350_000_000)
-                    if !Task.isCancelled && !isHovered {
-                        coordinator.setExpansionState(.compact)
-                    }
+        VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                if isExpanded {
+                    expandedIslandView
+                        .transition(.opacity)
+                } else {
+                    compactNotchView
+                        .transition(.opacity)
                 }
             }
+            .frame(width: activeWidth, height: activeHeight)
+            .background(Color.black)
+            .clipShape(
+                DynamicNotchShape(
+                    cornerRadius: (isExpanded || hasActiveNotification) ? 22 : 14,
+                    earRadius: profile.hasPhysicalNotch ? ((isExpanded || hasActiveNotification) ? 14 : 12) : 0,
+                    hasEars: profile.hasPhysicalNotch
+                )
+            )
+
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: isExpanded)
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: mediaCoordinator.isAudioActive)
+        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hasActiveNotification)
     }
 
     private var hasActiveNotification: Bool {
@@ -140,21 +156,32 @@ public struct NotchContainerView: View {
                         .padding(.bottom, 12)
 
                     } else if let activity = liveCoordinator.primaryActivity {
-                        HStack(spacing: 10) {
-                            Image(systemName: activity.iconName)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.brandLavender)
-                                .frame(width: 24, alignment: .leading)
+                        HStack(alignment: .top, spacing: 12) {
+                            if let bundleId = activity.bundleIdentifier,
+                               let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: appUrl.path))
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                            } else {
+                                Image(systemName: activity.iconName)
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(activity.priority >= 90 ? MaczyDesignTokens.statusRed : MaczyDesignTokens.brandLavender)
+                                    .frame(width: 32, height: 32, alignment: .center)
+                            }
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(activity.title)
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(.white)
                                     .lineLimit(1)
                                 Text(activity.message)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.8))
-                                    .lineLimit(1)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.90))
+                                    .lineLimit(3)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
 
                             Spacer(minLength: 4)
@@ -169,43 +196,27 @@ public struct NotchContainerView: View {
                                     .foregroundColor(MaczyDesignTokens.statusRed)
                             }
                         }
-                        .padding(.horizontal, 26)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 14)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
-                .clipShape(DynamicNotchShape(
-                    cornerRadius: 22,
-                    earRadius: profile.hasPhysicalNotch ? 14 : 0,
-                    hasEars: profile.hasPhysicalNotch
-                ))
             } else {
-                // MARK: - Regular Compact Idle State
-                if mediaCoordinator.isMediaActive {
-                    // Now Playing compact pill
-                    HStack(spacing: 8) {
-                        Image(systemName: mediaCoordinator.currentTrack.isPlaying ? "waveform" : "pause.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(MaczyDesignTokens.brandLavender)
-
-                        Text("\(mediaCoordinator.currentTrack.artist) — \(mediaCoordinator.currentTrack.title)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                // MARK: - Regular Compact Idle / Audio State
+                if mediaCoordinator.isAudioActive && !hasActiveNotification {
+                    // Audio Playing Compact Notch (Matching user attachment media_1795551410991_f116f758.png)
+                    HStack {
+                        // Left wing: Circular album art / music icon with progress ring
+                        NowPlayingCompactArtworkRing(track: mediaCoordinator.currentTrack)
+                            .padding(.leading, profile.hasPhysicalNotch ? 22 : 16)
 
                         Spacer()
 
-                        Image(systemName: mediaCoordinator.currentTrack.artworkIconName)
-                            .font(.system(size: 10))
-                            .foregroundColor(MaczyDesignTokens.brandPurple)
+                        // Right wing: Animated 4-bar equalizer
+                        NowPlayingEqualizerView(isPlaying: mediaCoordinator.isAudioPlaying)
+                            .padding(.trailing, profile.hasPhysicalNotch ? 22 : 16)
                     }
-                    .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black.opacity(0.92))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
 
                 } else if profile.isVirtualIsland {
                     // Virtual Island Pill with Battery
@@ -236,13 +247,8 @@ public struct NotchContainerView: View {
 
                 } else {
                     // Physical Notch Integration
-                    Color.black
+                    Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipShape(DynamicNotchShape(
-                            cornerRadius: 12,
-                            earRadius: 10,
-                            hasEars: true
-                        ))
                 }
             }
         }
@@ -392,28 +398,45 @@ public struct NotchContainerView: View {
                         }
                     }
 
-                    // Track Progress Bar
-                    HStack(spacing: 6) {
-                        Text(mediaCoordinator.currentTrack.formattedElapsed)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
+                    // Track Progress Bar / Stream Status
+                    if let duration = mediaCoordinator.currentTrack.duration, duration > 0 {
+                        HStack(spacing: 6) {
+                            Text(mediaCoordinator.currentTrack.formattedElapsed)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
 
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.15))
-                                    .frame(height: 3)
-                                Capsule()
-                                    .fill(MaczyDesignTokens.brandPurple)
-                                    .frame(width: max(0, geo.size.width * CGFloat(mediaCoordinator.currentTrack.progress)), height: 3)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.15))
+                                        .frame(height: 3)
+                                    Capsule()
+                                        .fill(MaczyDesignTokens.brandPurple)
+                                        .frame(width: max(0, geo.size.width * CGFloat(mediaCoordinator.currentTrack.progress)), height: 3)
+                                }
+                                .frame(maxHeight: .infinity, alignment: .center)
                             }
-                            .frame(maxHeight: .infinity, alignment: .center)
+                            .frame(height: 10)
+
+                            Text(mediaCoordinator.currentTrack.formattedDuration)
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                    } else {
+                        // Live Audio / Browser Media Stream Status
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color(red: 0.85, green: 0.58, blue: 0.38))
+                                .frame(width: 5, height: 5)
+                            Text("Active Stream • \(mediaCoordinator.currentTrack.artist)")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(1)
+                            Spacer()
+                            NowPlayingEqualizerView(isPlaying: mediaCoordinator.isAudioPlaying)
+                                .scaleEffect(0.65)
                         }
                         .frame(height: 10)
-
-                        Text(mediaCoordinator.currentTrack.formattedDuration)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.5))
                     }
                 }
                 .padding(10)
@@ -600,12 +623,6 @@ public struct NotchContainerView: View {
         .padding(.top, 14)
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
-        .clipShape(DynamicNotchShape(
-            cornerRadius: 22,
-            earRadius: profile.hasPhysicalNotch ? 14 : 0,
-            hasEars: profile.hasPhysicalNotch
-        ))
     }
 }
 
@@ -678,6 +695,14 @@ public struct DynamicNotchShape: Shape {
     public var cornerRadius: CGFloat = 20
     public var earRadius: CGFloat = 12
     public var hasEars: Bool = true
+
+    public var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(cornerRadius, earRadius) }
+        set {
+            cornerRadius = newValue.first
+            earRadius = newValue.second
+        }
+    }
 
     public init(cornerRadius: CGFloat = 20, earRadius: CGFloat = 12, hasEars: Bool = true) {
         self.cornerRadius = cornerRadius
@@ -773,5 +798,85 @@ private struct BatteryBadge: View {
         .padding(.vertical, 3)
         .background(Color.white.opacity(0.06))
         .cornerRadius(6)
+    }
+}
+
+/// Circular artwork with dynamic accent progress ring matching native Apple Dynamic Notch style.
+struct NowPlayingCompactArtworkRing: View {
+    let track: NowPlayingItem
+
+    var body: some View {
+        ZStack {
+            // Background subtle circular track
+            Circle()
+                .stroke(Color.white.opacity(0.18), lineWidth: 2)
+
+            // Accent progress ring (orange/amber gradient matching user screenshot)
+            Circle()
+                .trim(from: 0, to: CGFloat(track.progress > 0 ? track.progress : 0.70))
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(colors: [
+                            Color(red: 0.96, green: 0.68, blue: 0.38),
+                            Color(red: 0.88, green: 0.54, blue: 0.28)
+                        ]),
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+
+            // Inner circular thumbnail / icon container
+            ZStack {
+                Circle()
+                    .fill(Color(white: 0.12))
+
+                Image(systemName: track.artworkIconName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color(red: 0.96, green: 0.68, blue: 0.38))
+            }
+            .padding(2.5)
+        }
+        .frame(width: 24, height: 24)
+    }
+}
+
+/// Animated 4-bar equalizer waveform matching user screenshot media_1795551410991_f116f758.png.
+struct NowPlayingEqualizerView: View {
+    let isPlaying: Bool
+    @State private var phase: Double = 0.0
+
+    private let timer = Timer.publish(every: 0.18, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(0..<4, id: \.self) { index in
+                Capsule()
+                    .fill(Color(red: 0.85, green: 0.58, blue: 0.38).opacity(isPlaying ? 1.0 : 0.45))
+                    .frame(
+                        width: 3.2,
+                        height: isPlaying ? animatedHeight(for: index) : 3.5
+                    )
+                    .animation(.easeInOut(duration: 0.18), value: phase)
+                    .animation(.easeOut(duration: 0.05), value: isPlaying)
+            }
+        }
+        .frame(height: 20)
+        .onReceive(timer) { _ in
+            if isPlaying {
+                phase += 1.0
+            }
+        }
+    }
+
+    private func animatedHeight(for index: Int) -> CGFloat {
+        let pattern: [[CGFloat]] = [
+            [7, 15, 11, 16],
+            [12, 8, 17, 10],
+            [16, 14, 9, 13],
+            [9, 17, 13, 7]
+        ]
+        let step = Int(phase) % pattern.count
+        return pattern[step][index]
     }
 }

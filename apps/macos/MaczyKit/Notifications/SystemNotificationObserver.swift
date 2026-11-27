@@ -440,8 +440,11 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             var containerNodeCount = 0
             Self.findBannerContainers(in: window, nodeCount: &containerNodeCount, into: &containers)
 
-            let targets = containers.isEmpty ? [window] : containers
-            for target in targets {
+            // Only extract from genuine Notification Center banner/alert containers.
+            // Never fall back to scanning the whole window, as NotificationCenter also owns
+            // desktop widgets (e.g. Clock widget "6.13") which are not notifications.
+            guard !containers.isEmpty else { continue }
+            for target in containers {
                 var texts: [String] = []
                 var appCandidates: [String] = []
                 var textNodeCount = 0

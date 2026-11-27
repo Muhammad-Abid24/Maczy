@@ -114,7 +114,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private var suppressBannerUntil: CFAbsoluteTime = 0
     private var lastWalStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
     private var lastDbStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
-    private var recentAXRecords: [(title: String, body: String, allTexts: String, timestamp: CFAbsoluteTime)] = []
+    private var recentAXRecords: [(bundleId: String, title: String, body: String, allTexts: String, timestamp: CFAbsoluteTime)] = []
     private var nextSyntheticAXRecId: Int64 = -1
 
     public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
@@ -529,6 +529,14 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             if !t.isEmpty && t.count >= 3 && rec.allTexts.contains(t) && (m.isEmpty || rec.allTexts.contains(m)) {
                 return true
             }
+            // Same app within 12s sharing a meaningful token (prevents 5s DB flush from re-posting AX notifications)
+            if rec.bundleId == payload.bundleIdentifier && (now - rec.timestamp) < 12.0 {
+                let dbTokens = Set(combined.split(separator: " ").filter { $0.count >= 3 })
+                let axTokens = Set(rec.allTexts.split(separator: " ").filter { $0.count >= 3 })
+                if !dbTokens.isDisjoint(with: axTokens) {
+                    return true
+                }
+            }
             return false
         }
 
@@ -536,7 +544,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             return true
         }
         if recordIfNew {
-            recentAXRecords.append((title: t, body: m, allTexts: combined, timestamp: now))
+            recentAXRecords.append((bundleId: payload.bundleIdentifier, title: t, body: m, allTexts: combined, timestamp: now))
         }
         return false
     }

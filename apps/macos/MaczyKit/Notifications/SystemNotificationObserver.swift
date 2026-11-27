@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import CoreGraphics
 import Darwin
+import os
 import SQLite3
 import Combine
 
@@ -87,6 +88,7 @@ public protocol SystemNotificationObserverProtocol: AnyObject, Sendable {
 /// incoming system notifications to Maczy's Dynamic Notch while suppressing the native banner.
 public final class SystemNotificationObserver: SystemNotificationObserverProtocol, @unchecked Sendable {
     public static let shared = SystemNotificationObserver()
+    private static let logger = Logger(subsystem: "com.maczy.notifications", category: "SystemNotificationObserver")
 
     private let dbPath: String
     private let queue = DispatchQueue(label: "com.maczy.system-notifications", qos: .userInteractive)
@@ -107,6 +109,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private var walSource: DispatchSourceFileSystemObject?
     private var walFileDescriptor: Int32 = -1
     private var lastBannerDismissTime: CFAbsoluteTime = 0
+    private var suppressBannerUntil: CFAbsoluteTime = 0
 
     public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
 
@@ -208,15 +211,19 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             guard let owner = info[kCGWindowOwnerName as String] as? String else { continue }
             guard owner == "Notification Center" || owner == "NotificationCenter" else { continue }
             guard let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
-                  let x = boundsDict["X"] as? CGFloat,
-                  let y = boundsDict["Y"] as? CGFloat,
                   let w = boundsDict["Width"] as? CGFloat,
                   let h = boundsDict["Height"] as? CGFloat else {
                 continue
             }
-            // Native banner toasts sit near the top-right (y <= 120 in CG coords) with compact height (30..320pt).
-            // Full Notification Center sidebar has height > 400pt and is intentionally ignored.
-            if w >= 200 && h >= 30 && h <= 320 && y <= 120 && x > 0 {
+            let layer = info[kCGWindowLayer as String] as? Int ?? 0
+            // macOS 26+ renders Notification Center banners on a layer-21 overlay window;
+            // older macOS versions use a compact top-right toast window (30..320pt tall).
+            if layer == 21 && w >= 200 && h >= 30 {
+                return true
+            }
+            if let x = boundsDict["X"] as? CGFloat,
+               let y = boundsDict["Y"] as? CGFloat,
+               w >= 200 && h >= 30 && h <= 320 && y <= 120 && x > 0 {
                 return true
             }
         }
@@ -285,7 +292,9 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private func seedLastSeenRecId() {
         var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK, let db = db else {
+        let rc = sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+        guard rc == SQLITE_OK, let db = db else {
+            Self.logger.error("seedLastSeenRecId failed rc=\(rc, privacy: .public) path=\(self.dbPath, privacy: .public)")
             return
         }
         defer { sqlite3_close(db) }
@@ -306,9 +315,9 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         timer.schedule(deadline: .now() + 0.05, repeating: 0.05, leeway: .milliseconds(10))
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
-            if self.isSuppressionEnabled && Self.isNativeBannerWindowVisible() {
-                let now = CFAbsoluteTimeGetCurrent()
-                if now - self.lastBannerDismissTime > 0.04 {
+            let now = CFAbsoluteTimeGetCurrent()
+            if self.isSuppressionEnabled && now < self.suppressBannerUntil {
+                if now - self.lastBannerDismissTime > 0.20 && Self.isNativeBannerWindowVisible() {
                     self.lastBannerDismissTime = now
                     Self.dismissNativeNotificationBanner()
                 }
@@ -442,6 +451,9 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private func dispatchNotification(_ payload: SystemNotificationPayload) {
         // 1. Immediately suppress native macOS notification banner
         if isSuppressionEnabled {
+            let now = CFAbsoluteTimeGetCurrent()
+            suppressBannerUntil = now + 1.5
+            lastBannerDismissTime = now
             Self.dismissNativeNotificationBanner()
         }
 

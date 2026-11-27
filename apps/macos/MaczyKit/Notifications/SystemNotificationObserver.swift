@@ -230,6 +230,19 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         return false
     }
 
+    /// Returns true if the mouse cursor is near the top-right menu bar clock/Notification Center trigger,
+    /// so we don't dismiss the panel when the user intentionally clicks to open Notification Center.
+    private static func isCursorInMenuBarTopRight() -> Bool {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+              ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+              NSClassFromString("XCTestCase") == nil else {
+            return false
+        }
+        guard let loc = CGEvent(source: nil)?.location else { return false }
+        let mainWidth = CGFloat(CGDisplayPixelsWide(CGMainDisplayID()))
+        return loc.y <= 38 && loc.x >= (mainWidth - 360)
+    }
+
     /// Start real-time monitoring of macOS notifications.
     public func startObserving() {
         startObserving(seedMaxId: true)
@@ -312,15 +325,16 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private func setupPollingTimer() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 0.05, repeating: 0.05, leeway: .milliseconds(10))
+        timer.schedule(deadline: .now() + 0.03, repeating: 0.03, leeway: .milliseconds(8))
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
             let now = CFAbsoluteTimeGetCurrent()
-            if self.isSuppressionEnabled && now < self.suppressBannerUntil {
-                if now - self.lastBannerDismissTime > 0.20 && Self.isNativeBannerWindowVisible() {
-                    self.lastBannerDismissTime = now
-                    Self.dismissNativeNotificationBanner()
-                }
+            if self.isSuppressionEnabled &&
+               now - self.lastBannerDismissTime > 0.25 &&
+               !Self.isCursorInMenuBarTopRight() &&
+               Self.isNativeBannerWindowVisible() {
+                self.lastBannerDismissTime = now
+                Self.dismissNativeNotificationBanner()
             }
             self.checkForNewNotifications()
         }

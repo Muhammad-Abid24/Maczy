@@ -532,27 +532,17 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             if rec.title == t && rec.body == m {
                 return true
             }
-            if !mClean.isEmpty && mClean.count >= 3 {
-                if rec.allTexts.contains(mClean) || (!recBodyClean.isEmpty && mClean.contains(recBodyClean)) {
+            if !mClean.isEmpty && mClean.count >= 4 {
+                if rec.allTexts.contains(mClean) || (!recBodyClean.isEmpty && recBodyClean.count >= 4 && mClean.contains(recBodyClean)) {
                     return true
                 }
             }
-            if !tClean.isEmpty && tClean.count >= 3 {
-                if rec.allTexts.contains(tClean) && (mClean.isEmpty || rec.allTexts.contains(mClean) || (!recBodyClean.isEmpty && mClean.hasPrefix(String(recBodyClean.prefix(8))))) {
+            if !tClean.isEmpty && tClean.count >= 4 && (recTitleClean == tClean || rec.allTexts.contains(tClean)) {
+                if mClean.isEmpty || recBodyClean.isEmpty {
                     return true
                 }
-                if !recTitleClean.isEmpty && (tClean == recTitleClean || tClean.hasPrefix(recTitleClean) || recTitleClean.hasPrefix(tClean)) {
-                    return true
-                }
-            }
-            // Within 15s, match by same bundleId OR significant word/token overlap (prevents 5s DB flush re-posting)
-            if (now - rec.timestamp) < 15.0 {
-                if rec.bundleId.caseInsensitiveCompare(payload.bundleIdentifier) == .orderedSame {
-                    return true
-                }
-                let dbTokens = Set(combined.split(separator: " ").map(String.init).filter { $0.count >= 4 })
-                let axTokens = Set(rec.allTexts.split(separator: " ").map(String.init).filter { $0.count >= 4 })
-                if !dbTokens.isDisjoint(with: axTokens) {
+                let prefixLen = min(10, min(mClean.count, recBodyClean.count))
+                if prefixLen >= 4 && mClean.prefix(prefixLen) == recBodyClean.prefix(prefixLen) {
                     return true
                 }
             }
@@ -678,17 +668,18 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                 self.suppressionQueue.async { [weak self] in
                     guard let self = self else { return }
                     let now = CFAbsoluteTimeGetCurrent()
-                    if now - self.lastBannerDismissTime > 0.25 &&
-                       !Self.isCursorInMenuBarTopRight() &&
+                    if !Self.isCursorInMenuBarTopRight() &&
                        Self.isNativeBannerWindowVisible() {
-                        self.lastBannerDismissTime = now
-                        // Extract notification text instantaneously via AXUIElement BEFORE killing the banner
+                        // Always extract new AX payloads right away so back-to-back notifications aren't skipped
                         let axPayloads = self.extractPayloadsFromAX()
-                        Self.dismissNativeNotificationBanner()
                         for payload in axPayloads {
                             if !self.markAndCheckDuplicateAX(payload, recordIfNew: true) {
                                 self.dispatchNotification(payload, suppressNative: false)
                             }
+                        }
+                        if now - self.lastBannerDismissTime > 0.15 {
+                            self.lastBannerDismissTime = now
+                            Self.dismissNativeNotificationBanner()
                         }
                     }
                 }

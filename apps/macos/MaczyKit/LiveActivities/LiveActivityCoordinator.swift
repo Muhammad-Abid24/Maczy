@@ -122,10 +122,6 @@ public final class LiveActivityCoordinator: ObservableObject {
     }
 
     private func upsertActivity(_ item: LiveActivityItem) {
-        // Replace any previous system notification toast so notifications never stack and extend visibility
-        if item.id.hasPrefix("sysnotif-") {
-            activities.removeAll { $0.id.hasPrefix("sysnotif-") && $0.id != item.id }
-        }
         if let idx = activities.firstIndex(where: { $0.id == item.id }) {
             activities[idx] = item
         } else {

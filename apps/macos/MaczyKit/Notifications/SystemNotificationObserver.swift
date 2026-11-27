@@ -168,83 +168,9 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         )
     }
 
-    /// Attempt clean Accessibility-based banner dismissal (AXCancel / Close button) so
-    /// NotificationCenter stays alive without desktop/widget flicker or restart glitch.
-    @discardableResult
-    public static func dismissBannerViaAX() -> Bool {
-        guard AXIsProcessTrusted() else { return false }
-        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui")
-        guard let ncApp = apps.first else { return false }
-
-        let axApp = AXUIElementCreateApplication(ncApp.processIdentifier)
-        var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let windows = windowsRef as? [AXUIElement], !windows.isEmpty else {
-            return false
-        }
-
-        var dismissedAny = false
-        for window in windows {
-            var containers: [AXUIElement] = []
-            var count = 0
-            findBannerContainers(in: window, nodeCount: &count, into: &containers)
-            for banner in containers {
-                var actionsRef: CFArray?
-                if AXUIElementCopyActionNames(banner, &actionsRef) == .success,
-                   let actions = actionsRef as? [String] {
-                    if let closeAction = actions.first(where: {
-                        let low = $0.lowercased()
-                        return low == "axcancel" || low.contains("close") || low.contains("clear") || low.contains("dismiss")
-                    }) {
-                        if AXUIElementPerformAction(banner, closeAction as CFString) == .success {
-                            dismissedAny = true
-                            continue
-                        }
-                    }
-                }
-
-                if pressCloseButton(in: banner) {
-                    dismissedAny = true
-                }
-            }
-        }
-        return dismissedAny
-    }
-
-    private static func pressCloseButton(in element: AXUIElement, depth: Int = 0) -> Bool {
-        guard depth < 6 else { return false }
-        var roleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-        if (roleRef as? String) == (kAXButtonRole as String) {
-            for attr in [kAXTitleAttribute as CFString, kAXDescriptionAttribute as CFString, kAXSubroleAttribute as CFString] {
-                var valRef: CFTypeRef?
-                if AXUIElementCopyAttributeValue(element, attr, &valRef) == .success,
-                   let s = (valRef as? String)?.lowercased(),
-                   s.contains("close") || s.contains("clear") || s.contains("dismiss") {
-                    return AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
-                }
-            }
-        }
-
-        var childrenRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-           let children = childrenRef as? [AXUIElement] {
-            for child in children {
-                if pressCloseButton(in: child, depth: depth + 1) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    /// Dismiss native top-right macOS notification banner cleanly via AX first, falling back to
-    /// direct SIGKILL only when AX dismissal is unavailable or unsupported.
+    /// Dismiss native top-right macOS notification banner immediately via direct SIGKILL
+    /// on NotificationCenter processes (< 0.01ms syscall) with killall fallback.
     public static func dismissNativeNotificationBanner() {
-        if dismissBannerViaAX() {
-            return
-        }
-
         let bundleIds = [
             "com.apple.notificationcenterui",
             "com.apple.UserNotificationCenter"
@@ -982,16 +908,13 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         // 2. Notify callback if provided
         onNotificationReceived?(payload)
 
-        // 3. Immediately suppress native macOS notification banner on dedicated suppression queue
+        // 3. Immediately suppress native macOS notification banner if still visible (single clean pass to avoid respawn glitch)
         if suppressNative && isSuppressionEnabled {
             suppressionQueue.async { [weak self] in
                 let now = CFAbsoluteTimeGetCurrent()
                 self?.suppressBannerUntil = now + 1.5
-                self?.lastBannerDismissTime = now
-                Self.dismissNativeNotificationBanner()
-            }
-            for delay in [0.03, 0.08, 0.15, 0.25, 0.40] {
-                suppressionQueue.asyncAfter(deadline: .now() + delay) {
+                if Self.isNativeBannerWindowVisible() {
+                    self?.lastBannerDismissTime = now
                     Self.dismissNativeNotificationBanner()
                 }
             }

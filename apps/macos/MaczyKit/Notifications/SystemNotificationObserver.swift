@@ -1,5 +1,7 @@
 import Foundation
 import AppKit
+import CoreGraphics
+import Darwin
 import SQLite3
 import Combine
 
@@ -102,6 +104,9 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private var pollTimer: DispatchSourceTimer?
     private var fsSource: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
+    private var walSource: DispatchSourceFileSystemObject?
+    private var walFileDescriptor: Int32 = -1
+    private var lastBannerDismissTime: CFAbsoluteTime = 0
 
     public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
 
@@ -152,28 +157,70 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         )
     }
 
-    /// Dismiss native top-right macOS notification banner by force-terminating NotificationCenter processes.
+    /// Dismiss native top-right macOS notification banner immediately via direct SIGKILL
+    /// on NotificationCenter processes (< 0.01ms syscall) with killall fallback.
     public static func dismissNativeNotificationBanner() {
         let bundleIds = [
             "com.apple.notificationcenterui",
             "com.apple.UserNotificationCenter"
         ]
+        var killedViaPID = false
         for bid in bundleIds {
             let apps = NSRunningApplication.runningApplications(withBundleIdentifier: bid)
             for app in apps {
-                _ = app.forceTerminate()
+                let pid = app.processIdentifier
+                if pid > 0 {
+                    // Direct SIGKILL is instantaneous (no fork/exec delay)
+                    if Darwin.kill(pid, SIGKILL) == 0 {
+                        killedViaPID = true
+                    } else {
+                        _ = app.forceTerminate()
+                    }
+                }
             }
         }
-        // Direct kernel signal killall fallback to ensure immediate destruction of native banner window
-        let task = Process()
-        task.launchPath = "/usr/bin/killall"
-        task.arguments = ["-9", "NotificationCenter"]
-        try? task.run()
 
-        let taskUser = Process()
-        taskUser.launchPath = "/usr/bin/killall"
-        taskUser.arguments = ["-9", "UserNotificationCenter"]
-        try? taskUser.run()
+        // Fallback killall only if NSRunningApplication didn't find/kill the process
+        if !killedViaPID {
+            for processName in ["NotificationCenter", "UserNotificationCenter"] {
+                let task = Process()
+                task.launchPath = "/usr/bin/killall"
+                task.arguments = ["-9", processName]
+                try? task.run()
+            }
+        }
+    }
+
+    /// Detects whether a native Notification Center banner toast window is currently visible
+    /// at the top-right of the screen (excluding the full-height Notification Center sidebar).
+    public static func isNativeBannerWindowVisible() -> Bool {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+              ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+              NSClassFromString("XCTestCase") == nil else {
+            return false
+        }
+
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
+
+        for info in windowList {
+            guard let owner = info[kCGWindowOwnerName as String] as? String else { continue }
+            guard owner == "Notification Center" || owner == "NotificationCenter" else { continue }
+            guard let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                  let x = boundsDict["X"] as? CGFloat,
+                  let y = boundsDict["Y"] as? CGFloat,
+                  let w = boundsDict["Width"] as? CGFloat,
+                  let h = boundsDict["Height"] as? CGFloat else {
+                continue
+            }
+            // Native banner toasts sit near the top-right (y <= 120 in CG coords) with compact height (30..320pt).
+            // Full Notification Center sidebar has height > 400pt and is intentionally ignored.
+            if w >= 200 && h >= 30 && h <= 320 && y <= 120 && x > 0 {
+                return true
+            }
+        }
+        return false
     }
 
     /// Start real-time monitoring of macOS notifications.
@@ -219,10 +266,19 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             if let fs = self.fsSource {
                 fs.cancel()
                 self.fsSource = nil
-            }
-            if self.fileDescriptor >= 0 {
+                self.fileDescriptor = -1
+            } else if self.fileDescriptor >= 0 {
                 close(self.fileDescriptor)
                 self.fileDescriptor = -1
+            }
+
+            if let wal = self.walSource {
+                wal.cancel()
+                self.walSource = nil
+                self.walFileDescriptor = -1
+            } else if self.walFileDescriptor >= 0 {
+                close(self.walFileDescriptor)
+                self.walFileDescriptor = -1
             }
         }
     }
@@ -247,9 +303,17 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private func setupPollingTimer() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 0.08, repeating: 0.08, leeway: .milliseconds(15))
+        timer.schedule(deadline: .now() + 0.05, repeating: 0.05, leeway: .milliseconds(10))
         timer.setEventHandler { [weak self] in
-            self?.checkForNewNotifications()
+            guard let self = self else { return }
+            if self.isSuppressionEnabled && Self.isNativeBannerWindowVisible() {
+                let now = CFAbsoluteTimeGetCurrent()
+                if now - self.lastBannerDismissTime > 0.04 {
+                    self.lastBannerDismissTime = now
+                    Self.dismissNativeNotificationBanner()
+                }
+            }
+            self.checkForNewNotifications()
         }
         timer.resume()
         self.pollTimer = timer
@@ -258,22 +322,65 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private func setupFileSystemWatcher() {
         let dirPath = (dbPath as NSString).deletingLastPathComponent
         let fd = open(dirPath, O_EVTONLY)
+        if fd >= 0 {
+            self.fileDescriptor = fd
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: fd,
+                eventMask: [.write, .extend, .attrib],
+                queue: queue
+            )
+            source.setEventHandler { [weak self] in
+                guard let self = self else { return }
+                if self.walSource == nil {
+                    self.attachWalWatcher()
+                }
+                self.checkForNewNotifications()
+            }
+            source.setCancelHandler {
+                close(fd)
+            }
+            source.resume()
+            self.fsSource = source
+        }
+
+        attachWalWatcher()
+    }
+
+    /// Watch the SQLite WAL file directly so inserts trigger immediately (< 1ms)
+    /// instead of waiting for directory metadata changes or the fallback polling timer.
+    private func attachWalWatcher() {
+        if let existing = walSource {
+            existing.cancel()
+            self.walSource = nil
+            self.walFileDescriptor = -1
+        }
+
+        let walPath = dbPath + "-wal"
+        let fd = open(walPath, O_EVTONLY)
         guard fd >= 0 else { return }
-        self.fileDescriptor = fd
+        self.walFileDescriptor = fd
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: [.write, .extend, .attrib],
+            eventMask: [.write, .extend, .delete, .rename],
             queue: queue
         )
         source.setEventHandler { [weak self] in
-            self?.checkForNewNotifications()
+            guard let self = self else { return }
+            let flags = source.data
+            if flags.contains(.delete) || flags.contains(.rename) {
+                self.attachWalWatcher()
+            }
+            if self.isSuppressionEnabled {
+                Self.dismissNativeNotificationBanner()
+            }
+            self.checkForNewNotifications()
         }
         source.setCancelHandler {
             close(fd)
         }
         source.resume()
-        self.fsSource = source
+        self.walSource = source
     }
 
     /// Query SQLite for any notification records inserted after `lastSeenRecId`.

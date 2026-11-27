@@ -809,7 +809,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                 message: payload.displayMessage,
                 appIcon: payload.fallbackIconName,
                 bundleIdentifier: payload.bundleIdentifier,
-                durationSeconds: 11.0
+                durationSeconds: 9.0
             )
         }
 

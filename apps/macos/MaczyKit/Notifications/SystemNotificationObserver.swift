@@ -92,6 +92,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private let dbPath: String
     private let queue = DispatchQueue(label: "com.maczy.system-notifications", qos: .userInteractive)
+    private let suppressionQueue = DispatchQueue(label: "com.maczy.system-notifications.suppress", qos: .userInteractive)
     private let lock = NSLock()
 
     private var _isObserving = false
@@ -110,6 +111,8 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private var walFileDescriptor: Int32 = -1
     private var lastBannerDismissTime: CFAbsoluteTime = 0
     private var suppressBannerUntil: CFAbsoluteTime = 0
+    private var lastWalStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
+    private var lastDbStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
 
     public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
 
@@ -323,20 +326,47 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         }
     }
 
+    private func hasDatabaseFileChanged() -> Bool {
+        var changed = false
+        var walStat = stat()
+        if stat(dbPath + "-wal", &walStat) == 0 {
+            let stamp = (walStat.st_mtimespec.tv_sec, walStat.st_mtimespec.tv_nsec, walStat.st_size)
+            if stamp != lastWalStamp {
+                lastWalStamp = stamp
+                changed = true
+            }
+        }
+        var dbStat = stat()
+        if stat(dbPath, &dbStat) == 0 {
+            let stamp = (dbStat.st_mtimespec.tv_sec, dbStat.st_mtimespec.tv_nsec, dbStat.st_size)
+            if stamp != lastDbStamp {
+                lastDbStamp = stamp
+                changed = true
+            }
+        }
+        return changed
+    }
+
     private func setupPollingTimer() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 0.03, repeating: 0.03, leeway: .milliseconds(8))
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
-            let now = CFAbsoluteTimeGetCurrent()
-            if self.isSuppressionEnabled &&
-               now - self.lastBannerDismissTime > 0.25 &&
-               !Self.isCursorInMenuBarTopRight() &&
-               Self.isNativeBannerWindowVisible() {
-                self.lastBannerDismissTime = now
-                Self.dismissNativeNotificationBanner()
+            if self.isSuppressionEnabled {
+                self.suppressionQueue.async { [weak self] in
+                    guard let self = self else { return }
+                    let now = CFAbsoluteTimeGetCurrent()
+                    if now - self.lastBannerDismissTime > 0.25 &&
+                       !Self.isCursorInMenuBarTopRight() &&
+                       Self.isNativeBannerWindowVisible() {
+                        self.lastBannerDismissTime = now
+                        Self.dismissNativeNotificationBanner()
+                    }
+                }
             }
-            self.checkForNewNotifications()
+            if self.hasDatabaseFileChanged() {
+                self.checkForNewNotifications()
+            }
         }
         timer.resume()
         self.pollTimer = timer
@@ -394,10 +424,12 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             if flags.contains(.delete) || flags.contains(.rename) {
                 self.attachWalWatcher()
             }
-            if self.isSuppressionEnabled {
-                Self.dismissNativeNotificationBanner()
-            }
             self.checkForNewNotifications()
+            if self.isSuppressionEnabled {
+                self.suppressionQueue.async {
+                    Self.dismissNativeNotificationBanner()
+                }
+            }
         }
         source.setCancelHandler {
             close(fd)
@@ -463,18 +495,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     }
 
     private func dispatchNotification(_ payload: SystemNotificationPayload) {
-        // 1. Immediately suppress native macOS notification banner
-        if isSuppressionEnabled {
-            let now = CFAbsoluteTimeGetCurrent()
-            suppressBannerUntil = now + 1.5
-            lastBannerDismissTime = now
-            Self.dismissNativeNotificationBanner()
-        }
-
-        // 2. Notify callback if provided
-        onNotificationReceived?(payload)
-
-        // 3. Route directly to Dynamic Notch Live Activities on MainActor
+        // 1. Route directly to Dynamic Notch Live Activities on MainActor with zero delay
         DispatchQueue.main.async {
             LiveActivityCoordinator.shared.postNotification(
                 id: "sysnotif-\(payload.recId)",
@@ -486,10 +507,19 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             )
         }
 
-        // 4. Repeated sweeps to catch and destroy any delayed banner frame
+        // 2. Notify callback if provided
+        onNotificationReceived?(payload)
+
+        // 3. Immediately suppress native macOS notification banner on dedicated suppression queue
         if isSuppressionEnabled {
+            suppressionQueue.async { [weak self] in
+                let now = CFAbsoluteTimeGetCurrent()
+                self?.suppressBannerUntil = now + 1.5
+                self?.lastBannerDismissTime = now
+                Self.dismissNativeNotificationBanner()
+            }
             for delay in [0.03, 0.08, 0.15, 0.25, 0.40] {
-                queue.asyncAfter(deadline: .now() + delay) {
+                suppressionQueue.asyncAfter(deadline: .now() + delay) {
                     Self.dismissNativeNotificationBanner()
                 }
             }

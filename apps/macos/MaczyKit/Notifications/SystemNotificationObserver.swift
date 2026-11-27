@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Darwin
 import os
@@ -113,6 +114,8 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     private var suppressBannerUntil: CFAbsoluteTime = 0
     private var lastWalStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
     private var lastDbStamp: (sec: Int, nsec: Int, size: off_t) = (0, 0, -1)
+    private var recentAXSignatures: [(key: String, timestamp: CFAbsoluteTime)] = []
+    private var nextSyntheticAXRecId: Int64 = -1
 
     public var onNotificationReceived: (@Sendable (SystemNotificationPayload) -> Void)?
 
@@ -246,6 +249,182 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         return loc.y <= 38 && loc.x >= (mainWidth - 360)
     }
 
+    // MARK: - Instant Accessibility (AXUIElement) Notification Extraction
+    //
+    // macOS `usernoted` does not flush new notifications to `db2/db` until ~5 seconds after
+    // presentation. By reading the Notification Center banner's AXUIElement tree right as
+    // its layer-21 window appears (before dismissing it), Maczy displays the notification in
+    // the Dynamic Notch in < 40ms instead of waiting 5 seconds.
+
+    private static let axActionNoiseLabels: Set<String> = [
+        "close", "clear", "clear all", "options", "show more", "show less", "reply", "view", "actions"
+    ]
+
+    private static func inferBundleIdentifier(fromAppName name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        if lower.contains("telegram") { return "ru.keepcoder.telegram" }
+        if lower.contains("whatsapp") { return "net.whatsapp.whatsapp" }
+        if lower.contains("slack") { return "com.tinyspeck.slackmacgap" }
+        if lower.contains("mail") { return "com.apple.mail" }
+        if lower.contains("messages") { return "com.apple.MobileSMS" }
+        if lower.contains("calendar") { return "com.apple.iCal" }
+        if lower.contains("reminders") { return "com.apple.reminders" }
+        if lower.contains("script editor") { return "com.apple.scripteditor2" }
+        if lower.contains("discord") { return "com.hnc.Discord" }
+
+        if let match = NSWorkspace.shared.runningApplications.first(where: {
+            ($0.localizedName ?? "").caseInsensitiveCompare(trimmed) == .orderedSame
+        }), let bid = match.bundleIdentifier {
+            return bid
+        }
+        return trimmed.isEmpty ? "com.apple.notificationcenter" : "app.\(lower.replacingOccurrences(of: " ", with: "."))"
+    }
+
+    private static func collectStaticTexts(
+        from element: AXUIElement,
+        depth: Int = 0,
+        nodeCount: inout Int,
+        into results: inout [String]
+    ) {
+        guard depth < 10, nodeCount < 120 else { return }
+        nodeCount += 1
+
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+        let role = roleRef as? String ?? ""
+
+        if role == (kAXStaticTextRole as String) {
+            var valRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valRef)
+            if let text = valRef as? String {
+                let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !clean.isEmpty && !axActionNoiseLabels.contains(clean.lowercased()) {
+                    results.append(clean)
+                }
+            }
+            return
+        }
+
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for child in children {
+                collectStaticTexts(from: child, depth: depth + 1, nodeCount: &nodeCount, into: &results)
+            }
+        }
+    }
+
+    private static func findBannerContainers(
+        in element: AXUIElement,
+        depth: Int = 0,
+        nodeCount: inout Int,
+        into containers: inout [AXUIElement]
+    ) {
+        guard depth < 8, nodeCount < 100 else { return }
+        nodeCount += 1
+
+        var subroleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
+        let subrole = subroleRef as? String ?? ""
+
+        if subrole == "AXNotificationCenterBanner" || subrole == "AXNotificationCenterAlert" {
+            containers.append(element)
+            return
+        }
+
+        var childrenRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           let children = childrenRef as? [AXUIElement] {
+            for child in children {
+                findBannerContainers(in: child, depth: depth + 1, nodeCount: &nodeCount, into: &containers)
+            }
+        }
+    }
+
+    private func extractPayloadsFromAX() -> [SystemNotificationPayload] {
+        guard AXIsProcessTrusted() else { return [] }
+        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui")
+        guard let ncApp = apps.first else { return [] }
+
+        let axApp = AXUIElementCreateApplication(ncApp.processIdentifier)
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let windows = windowsRef as? [AXUIElement], !windows.isEmpty else {
+            return []
+        }
+
+        var payloads: [SystemNotificationPayload] = []
+
+        for window in windows {
+            var containers: [AXUIElement] = []
+            var containerNodeCount = 0
+            Self.findBannerContainers(in: window, nodeCount: &containerNodeCount, into: &containers)
+
+            let targets = containers.isEmpty ? [window] : containers
+            for target in targets {
+                var texts: [String] = []
+                var textNodeCount = 0
+                Self.collectStaticTexts(from: target, nodeCount: &textNodeCount, into: &texts)
+                guard !texts.isEmpty else { continue }
+
+                let bundleId: String
+                let title: String
+                let body: String
+
+                if texts.count >= 3 {
+                    bundleId = Self.inferBundleIdentifier(fromAppName: texts[0])
+                    title = texts[1]
+                    body = texts.dropFirst(2).joined(separator: " ")
+                } else if texts.count == 2 {
+                    bundleId = "com.apple.notificationcenter"
+                    title = texts[0]
+                    body = texts[1]
+                } else {
+                    bundleId = "com.apple.notificationcenter"
+                    title = texts[0]
+                    body = ""
+                }
+
+                lock.lock()
+                let recId = nextSyntheticAXRecId
+                nextSyntheticAXRecId -= 1
+                lock.unlock()
+
+                payloads.append(SystemNotificationPayload(
+                    recId: recId,
+                    bundleIdentifier: bundleId,
+                    title: title,
+                    subtitle: "",
+                    body: body,
+                    date: Date()
+                ))
+            }
+        }
+        return payloads
+    }
+
+    private func signatureKey(for payload: SystemNotificationPayload) -> String {
+        let t = payload.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let m = payload.displayMessage.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "\(t)|\(m)"
+    }
+
+    private func markAndCheckDuplicateAX(_ payload: SystemNotificationPayload, recordIfNew: Bool) -> Bool {
+        let key = signatureKey(for: payload)
+        let now = CFAbsoluteTimeGetCurrent()
+        lock.lock()
+        defer { lock.unlock() }
+        recentAXSignatures.removeAll { now - $0.timestamp > 15.0 }
+        if recentAXSignatures.contains(where: { $0.key == key }) {
+            return true
+        }
+        if recordIfNew {
+            recentAXSignatures.append((key: key, timestamp: now))
+        }
+        return false
+    }
+
     /// Start real-time monitoring of macOS notifications.
     public func startObserving() {
         startObserving(seedMaxId: true)
@@ -360,7 +539,14 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                        !Self.isCursorInMenuBarTopRight() &&
                        Self.isNativeBannerWindowVisible() {
                         self.lastBannerDismissTime = now
+                        // Extract notification text instantaneously via AXUIElement BEFORE killing the banner
+                        let axPayloads = self.extractPayloadsFromAX()
                         Self.dismissNativeNotificationBanner()
+                        for payload in axPayloads {
+                            if !self.markAndCheckDuplicateAX(payload, recordIfNew: true) {
+                                self.dispatchNotification(payload, suppressNative: false)
+                            }
+                        }
                     }
                 }
             }
@@ -490,11 +676,15 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         guard !newNotifications.isEmpty else { return }
 
         for payload in newNotifications {
-            dispatchNotification(payload)
+            // Skip if already delivered instantaneously via AXUIElement within the last 15s
+            if markAndCheckDuplicateAX(payload, recordIfNew: false) {
+                continue
+            }
+            dispatchNotification(payload, suppressNative: true)
         }
     }
 
-    private func dispatchNotification(_ payload: SystemNotificationPayload) {
+    private func dispatchNotification(_ payload: SystemNotificationPayload, suppressNative: Bool = true) {
         // 1. Route directly to Dynamic Notch Live Activities on MainActor with zero delay
         DispatchQueue.main.async {
             LiveActivityCoordinator.shared.postNotification(
@@ -511,7 +701,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         onNotificationReceived?(payload)
 
         // 3. Immediately suppress native macOS notification banner on dedicated suppression queue
-        if isSuppressionEnabled {
+        if suppressNative && isSuppressionEnabled {
             suppressionQueue.async { [weak self] in
                 let now = CFAbsoluteTimeGetCurrent()
                 self?.suppressBannerUntil = now + 1.5

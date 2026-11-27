@@ -519,20 +519,39 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         defer { lock.unlock() }
         recentAXRecords.removeAll { now - $0.timestamp > 20.0 }
 
+        let stripEllipsis: (String) -> String = { s in
+            s.trimmingCharacters(in: CharacterSet(charactersIn: "….")).trimmingCharacters(in: .whitespaces)
+        }
+        let mClean = stripEllipsis(m)
+        let tClean = stripEllipsis(t)
+
         let isDup = recentAXRecords.contains { rec in
+            let recBodyClean = stripEllipsis(rec.body)
+            let recTitleClean = stripEllipsis(rec.title)
+
             if rec.title == t && rec.body == m {
                 return true
             }
-            if !m.isEmpty && m.count >= 3 && (rec.allTexts.contains(m) || m.contains(rec.body) && !rec.body.isEmpty) {
-                return true
+            if !mClean.isEmpty && mClean.count >= 3 {
+                if rec.allTexts.contains(mClean) || (!recBodyClean.isEmpty && mClean.contains(recBodyClean)) {
+                    return true
+                }
             }
-            if !t.isEmpty && t.count >= 3 && rec.allTexts.contains(t) && (m.isEmpty || rec.allTexts.contains(m)) {
-                return true
+            if !tClean.isEmpty && tClean.count >= 3 {
+                if rec.allTexts.contains(tClean) && (mClean.isEmpty || rec.allTexts.contains(mClean) || (!recBodyClean.isEmpty && mClean.hasPrefix(String(recBodyClean.prefix(8))))) {
+                    return true
+                }
+                if !recTitleClean.isEmpty && (tClean == recTitleClean || tClean.hasPrefix(recTitleClean) || recTitleClean.hasPrefix(tClean)) {
+                    return true
+                }
             }
-            // Same app within 12s sharing a meaningful token (prevents 5s DB flush from re-posting AX notifications)
-            if rec.bundleId == payload.bundleIdentifier && (now - rec.timestamp) < 12.0 {
-                let dbTokens = Set(combined.split(separator: " ").filter { $0.count >= 3 })
-                let axTokens = Set(rec.allTexts.split(separator: " ").filter { $0.count >= 3 })
+            // Within 15s, match by same bundleId OR significant word/token overlap (prevents 5s DB flush re-posting)
+            if (now - rec.timestamp) < 15.0 {
+                if rec.bundleId.caseInsensitiveCompare(payload.bundleIdentifier) == .orderedSame {
+                    return true
+                }
+                let dbTokens = Set(combined.split(separator: " ").map(String.init).filter { $0.count >= 4 })
+                let axTokens = Set(rec.allTexts.split(separator: " ").map(String.init).filter { $0.count >= 4 })
                 if !dbTokens.isDisjoint(with: axTokens) {
                     return true
                 }

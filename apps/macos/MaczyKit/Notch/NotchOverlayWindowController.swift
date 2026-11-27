@@ -250,6 +250,11 @@ public final class NotchOverlayWindowController {
     }
 
     private func startMouseHoverMonitoring() {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
+              ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
+              NSClassFromString("XCTestCase") == nil else {
+            return
+        }
         if globalMouseMonitor == nil {
             globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
                 Task { @MainActor [weak self] in

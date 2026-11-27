@@ -21,6 +21,12 @@ public final class MediaHUDCoordinator: ObservableObject {
     private var pollTimer: Timer?
     private var pausedDismissalTask: Task<Void, Never>? = nil
 
+    private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+        ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil ||
+        NSClassFromString("XCTestCase") != nil
+    }
+
     public init(
         provider: MediaRemoteProviderProtocol = NativeMediaRemoteProvider(),
         audioDetector: AudioOutputDetectorProtocol = NativeAudioOutputDetector(),
@@ -28,7 +34,7 @@ public final class MediaHUDCoordinator: ObservableObject {
     ) {
         self.provider = provider
         self.audioDetector = audioDetector
-        if autoStartMonitoring {
+        if autoStartMonitoring && !Self.isRunningTests {
             startMonitoring()
         }
     }

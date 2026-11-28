@@ -168,6 +168,54 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         )
     }
 
+    /// Immediately move any on-screen NotificationCenter banner window off-screen (`(-10000, -10000)`).
+    /// Ultra-fast (< 0.5ms) and safe to call synchronously right inside AXObserver callbacks.
+    @discardableResult
+    public static func moveBannerWindowsOffscreen() -> Bool {
+        guard AXIsProcessTrusted(),
+              let ncApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").first else {
+            return false
+        }
+
+        let axApp = AXUIElementCreateApplication(ncApp.processIdentifier)
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let windows = windowsRef as? [AXUIElement], !windows.isEmpty else {
+            return false
+        }
+
+        var movedAny = false
+        for window in windows {
+            // Check current position first to avoid redundant AX calls / move-notification loops
+            var posRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &posRef) == .success,
+               let axVal = posRef,
+               CFGetTypeID(axVal) == AXValueGetTypeID() {
+                var currentPos = CGPoint.zero
+                if AXValueGetValue(axVal as! AXValue, .cgPoint, &currentPos),
+                   currentPos.x < -2000 || currentPos.y < -2000 {
+                    continue
+                }
+            }
+
+            var containers: [AXUIElement] = []
+            var count = 0
+            findBannerContainers(in: window, nodeCount: &count, into: &containers)
+            guard !containers.isEmpty else { continue }
+
+            var posSettable: DarwinBoolean = false
+            if AXUIElementIsAttributeSettable(window, kAXPositionAttribute as CFString, &posSettable) == .success,
+               posSettable.boolValue {
+                var offscreen = CGPoint(x: -10000, y: -10000)
+                if let axPoint = AXValueCreate(.cgPoint, &offscreen),
+                   AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, axPoint) == .success {
+                    movedAny = true
+                }
+            }
+        }
+        return movedAny
+    }
+
     /// Dismiss native top-right macOS notification banner cleanly via Accessibility:
     /// 1) Immediately move the NotificationCenter banner window off-screen (`kAXPositionAttribute` -> (-10000, -10000))
     ///    so it disappears instantaneously without killing/restarting NotificationCenter (zero widget flicker/glitch).
@@ -187,25 +235,14 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
             return false
         }
 
-        var handledAny = false
+        var handledAny = moveBannerWindowsOffscreen()
         for window in windows {
             var containers: [AXUIElement] = []
             var count = 0
             findBannerContainers(in: window, nodeCount: &count, into: &containers)
             guard !containers.isEmpty else { continue }
 
-            // 1. Move window off-screen immediately if position is settable (zero-flicker hiding)
-            var posSettable: DarwinBoolean = false
-            if AXUIElementIsAttributeSettable(window, kAXPositionAttribute as CFString, &posSettable) == .success,
-               posSettable.boolValue {
-                var offscreen = CGPoint(x: -10000, y: -10000)
-                if let axPoint = AXValueCreate(.cgPoint, &offscreen),
-                   AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, axPoint) == .success {
-                    handledAny = true
-                }
-            }
-
-            // 2. Perform the banner's Close action (e.g. "Name:Close\nTarget:0x0\nSelector:(null)")
+            // Perform the banner's Close action (e.g. "Name:Close\nTarget:0x0\nSelector:(null)")
             for banner in containers {
                 var actionsRef: CFArray?
                 if AXUIElementCopyActionNames(banner, &actionsRef) == .success,
@@ -717,7 +754,14 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
         let axApp = AXUIElementCreateApplication(pid)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
-        AXObserverAddNotification(observer, axApp, kAXWindowCreatedNotification as CFString, refcon)
+        for notification in [
+            kAXWindowCreatedNotification,
+            kAXCreatedNotification,
+            kAXWindowMovedNotification,
+            kAXLayoutChangedNotification
+        ] {
+            AXObserverAddNotification(observer, axApp, notification as CFString, refcon)
+        }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
 
         self.axObserver = observer
@@ -734,6 +778,8 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private func handleAXWindowCreated() {
         guard isSuppressionEnabled, !Self.isCursorInMenuBarTopRight() else { return }
+        // Move banner window off-screen SYNCHRONOUSLY at 0ms before doing any async work or AX text traversal
+        let movedNow = Self.moveBannerWindowsOffscreen()
         suppressionQueue.async { [weak self] in
             guard let self = self else { return }
             let axPayloads = self.extractPayloadsFromAX()
@@ -742,7 +788,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                     self.dispatchNotification(payload, suppressNative: false)
                 }
             }
-            if !axPayloads.isEmpty || Self.isNativeBannerWindowVisible() {
+            if movedNow || !axPayloads.isEmpty || Self.isNativeBannerWindowVisible() {
                 self.lastBannerDismissTime = CFAbsoluteTimeGetCurrent()
                 Self.dismissNativeNotificationBanner()
             }
@@ -792,7 +838,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
     private func setupPollingTimer() {
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 0.03, repeating: 0.03, leeway: .milliseconds(8))
+        timer.schedule(deadline: .now() + 0.015, repeating: 0.015, leeway: .milliseconds(4))
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
             if self.isSuppressionEnabled {
@@ -807,7 +853,8 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                     let now = CFAbsoluteTimeGetCurrent()
                     if !Self.isCursorInMenuBarTopRight() &&
                        Self.isNativeBannerWindowVisible() {
-                        // Always extract new AX payloads right away so back-to-back notifications aren't skipped
+                        // Move offscreen FIRST before reading AX texts so banner disappears immediately
+                        Self.moveBannerWindowsOffscreen()
                         let axPayloads = self.extractPayloadsFromAX()
                         for payload in axPayloads {
                             if !self.markAndCheckDuplicateAX(payload, recordIfNew: true) {

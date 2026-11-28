@@ -32,6 +32,12 @@ public final class LiveActivityCoordinator: ObservableObject {
             expirationDate: expiration
         )
         upsertActivity(item)
+
+        // Ensure exact auto-dismissal when duration elapses rather than waiting up to 1s for the next ticker cycle
+        let delay = max(0.1, durationSeconds) + 0.05
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.tick()
+        }
     }
 
     /// Start a countdown timer live activity.

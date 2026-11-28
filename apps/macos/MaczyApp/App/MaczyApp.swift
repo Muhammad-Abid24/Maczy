@@ -2,8 +2,17 @@ import SwiftUI
 import AppKit
 import MaczyKit
 
+final class MaczyAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            _ = NotchCoordinator.shared
+        }
+    }
+}
+
 @main
 struct MaczyApp: App {
+    @NSApplicationDelegateAdaptor(MaczyAppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState.shared
 
     var body: some Scene {

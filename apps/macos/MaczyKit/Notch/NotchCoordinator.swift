@@ -334,7 +334,6 @@ public final class NotchCoordinator: ObservableObject {
             LiveActivityCoordinator.shared.$primaryActivity,
             TWSNotchCoordinator.shared.$activeConnectionToast
         )
-        .receive(on: DispatchQueue.main)
         .sink { [weak self] hud, activity, tws in
             let hasNotification = (hud != nil || activity != nil || tws != nil)
             self?.handleNotificationStateChanged(hasNotification)

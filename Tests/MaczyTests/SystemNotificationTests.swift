@@ -208,4 +208,8 @@ final class SystemNotificationTests: XCTestCase {
         interceptor.stop()
         XCTAssertFalse(interceptor.isRunning)
     }
+
+    func testNativeBannerWindowCheckSafeInTests() {
+        XCTAssertFalse(SystemNotificationObserver.isNativeBannerWindowVisible())
+    }
 }

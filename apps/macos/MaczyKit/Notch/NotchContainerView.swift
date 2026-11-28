@@ -77,7 +77,7 @@ public struct NotchContainerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: isExpanded)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: mediaCoordinator.isAudioActive)
-        .animation(.spring(response: 0.30, dampingFraction: 0.82), value: hasActiveNotification)
+        .animation(.spring(response: 0.22, dampingFraction: 0.85), value: hasActiveNotification)
     }
 
     private var hasActiveNotification: Bool {

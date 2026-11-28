@@ -168,9 +168,68 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         )
     }
 
-    /// Dismiss native top-right macOS notification banner immediately via direct SIGKILL
-    /// on NotificationCenter processes (< 0.01ms syscall) with killall fallback.
+    /// Dismiss native top-right macOS notification banner cleanly via Accessibility:
+    /// 1) Immediately move the NotificationCenter banner window off-screen (`kAXPositionAttribute` -> (-10000, -10000))
+    ///    so it disappears instantaneously without killing/restarting NotificationCenter (zero widget flicker/glitch).
+    /// 2) Trigger the banner's `Name:Close` AX action so `usernoted` completes cleanly.
+    /// Falls back to direct SIGKILL only if Accessibility is not granted or AX manipulation fails.
+    @discardableResult
+    public static func dismissBannerViaAX() -> Bool {
+        guard AXIsProcessTrusted(),
+              let ncApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").first else {
+            return false
+        }
+
+        let axApp = AXUIElementCreateApplication(ncApp.processIdentifier)
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let windows = windowsRef as? [AXUIElement], !windows.isEmpty else {
+            return false
+        }
+
+        var handledAny = false
+        for window in windows {
+            var containers: [AXUIElement] = []
+            var count = 0
+            findBannerContainers(in: window, nodeCount: &count, into: &containers)
+            guard !containers.isEmpty else { continue }
+
+            // 1. Move window off-screen immediately if position is settable (zero-flicker hiding)
+            var posSettable: DarwinBoolean = false
+            if AXUIElementIsAttributeSettable(window, kAXPositionAttribute as CFString, &posSettable) == .success,
+               posSettable.boolValue {
+                var offscreen = CGPoint(x: -10000, y: -10000)
+                if let axPoint = AXValueCreate(.cgPoint, &offscreen),
+                   AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, axPoint) == .success {
+                    handledAny = true
+                }
+            }
+
+            // 2. Perform the banner's Close action (e.g. "Name:Close\nTarget:0x0\nSelector:(null)")
+            for banner in containers {
+                var actionsRef: CFArray?
+                if AXUIElementCopyActionNames(banner, &actionsRef) == .success,
+                   let actions = actionsRef as? [String],
+                   let closeAction = actions.first(where: {
+                       let low = $0.lowercased()
+                       return low.contains("name:close") || low == "axcancel" || low.contains("clear") || low.contains("dismiss")
+                   }) {
+                    if AXUIElementPerformAction(banner, closeAction as CFString) == .success {
+                        handledAny = true
+                    }
+                }
+            }
+        }
+        return handledAny
+    }
+
+    /// Dismiss native top-right macOS notification banner cleanly via AX first, falling back to
+    /// direct SIGKILL only when Accessibility is unavailable.
     public static func dismissNativeNotificationBanner() {
+        if dismissBannerViaAX() {
+            return
+        }
+
         let bundleIds = [
             "com.apple.notificationcenterui",
             "com.apple.UserNotificationCenter"
@@ -224,14 +283,18 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                 continue
             }
             let layer = info[kCGWindowLayer as String] as? Int ?? 0
+            let x = boundsDict["X"] as? CGFloat ?? 0
+            let y = boundsDict["Y"] as? CGFloat ?? 0
+            // Ignore windows already moved off-screen by dismissBannerViaAX()
+            if x < -2000 || y < -2000 {
+                continue
+            }
             // macOS 26+ renders Notification Center banners on a layer-21 overlay window;
             // older macOS versions use a compact top-right toast window (30..320pt tall).
             if layer == 21 && w >= 200 && h >= 30 {
                 return true
             }
-            if let x = boundsDict["X"] as? CGFloat,
-               let y = boundsDict["Y"] as? CGFloat,
-               w >= 200 && h >= 30 && h <= 320 && y <= 120 && x > 0 {
+            if w >= 200 && h >= 30 && h <= 320 && y <= 120 && x > 0 {
                 return true
             }
         }

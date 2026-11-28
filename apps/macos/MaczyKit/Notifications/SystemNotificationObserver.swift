@@ -751,7 +751,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                                 self.dispatchNotification(payload, suppressNative: false)
                             }
                         }
-                        if now - self.lastBannerDismissTime > 0.15 {
+                        if now - self.lastBannerDismissTime > 0.60 {
                             self.lastBannerDismissTime = now
                             Self.dismissNativeNotificationBanner()
                         }
@@ -819,11 +819,6 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                 self.attachWalWatcher()
             }
             self.checkForNewNotifications()
-            if self.isSuppressionEnabled {
-                self.suppressionQueue.async {
-                    Self.dismissNativeNotificationBanner()
-                }
-            }
         }
         source.setCancelHandler {
             close(fd)

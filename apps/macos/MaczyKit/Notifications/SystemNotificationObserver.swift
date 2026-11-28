@@ -170,36 +170,11 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         )
     }
 
-    /// Returns true if the AX window represents the user-opened Notification Center sidebar/widgets
-    /// (which contains an `AXScrollArea` / `AXList`), rather than a transient floating banner toast.
-    private static func isNotificationCenterSidebar(in element: AXUIElement, depth: Int = 0, nodeCount: inout Int) -> Bool {
-        guard depth < 6, nodeCount < 60 else { return false }
-        nodeCount += 1
-
-        var roleRef: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-        let role = roleRef as? String ?? ""
-        if role == (kAXScrollAreaRole as String) || role == (kAXListRole as String) {
-            return true
-        }
-
-        var childrenRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-           let children = childrenRef as? [AXUIElement] {
-            for child in children {
-                if isNotificationCenterSidebar(in: child, depth: depth + 1, nodeCount: &nodeCount) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
     /// Immediately move any on-screen NotificationCenter banner window off-screen (`(-10000, -10000)`).
     /// Ultra-fast (< 0.5ms) and safe to call synchronously right inside AXObserver callbacks.
     @discardableResult
     public static func moveBannerWindowsOffscreen() -> Bool {
-        guard !isCursorInMenuBarTopRight() else { return false }
+        guard !isUserUsingNotificationCenter() else { return false }
         guard AXIsProcessTrusted(),
               let ncApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").first else {
             return false
@@ -214,29 +189,16 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
         var movedAny = false
         for window in windows {
-            var currentPos = CGPoint.zero
-            var hasPos = false
+            // Check current position first to avoid redundant AX calls / move-notification loops
             var posRef: CFTypeRef?
             if AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &posRef) == .success,
                let axVal = posRef,
                CFGetTypeID(axVal) == AXValueGetTypeID() {
-                hasPos = AXValueGetValue(axVal as! AXValue, .cgPoint, &currentPos)
-            }
-
-            // Never hide the user-opened Notification Center sidebar; restore it to (0,0) if it was offscreen
-            var sidebarNodes = 0
-            if isNotificationCenterSidebar(in: window, nodeCount: &sidebarNodes) {
-                if hasPos && (currentPos.x < -2000 || currentPos.y < -2000) {
-                    var origin = CGPoint.zero
-                    if let axOrigin = AXValueCreate(.cgPoint, &origin) {
-                        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, axOrigin)
-                    }
+                var currentPos = CGPoint.zero
+                if AXValueGetValue(axVal as! AXValue, .cgPoint, &currentPos),
+                   currentPos.x < -2000 || currentPos.y < -2000 {
+                    continue
                 }
-                continue
-            }
-
-            if hasPos && (currentPos.x < -2000 || currentPos.y < -2000) {
-                continue
             }
 
             var containers: [AXUIElement] = []
@@ -278,10 +240,6 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
 
         var handledAny = moveBannerWindowsOffscreen()
         for window in windows {
-            var sidebarNodes = 0
-            if isNotificationCenterSidebar(in: window, nodeCount: &sidebarNodes) {
-                continue
-            }
             var containers: [AXUIElement] = []
             var count = 0
             findBannerContainers(in: window, nodeCount: &count, into: &containers)
@@ -383,23 +341,15 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         return false
     }
 
-    /// Returns true if the user recently clicked the top-right menu bar clock/Notification Center
-    /// or is currently interacting with the top-right menu bar area (using points, not retina pixels).
-    private static func isCursorInMenuBarTopRight() -> Bool {
+    /// Returns true if the user recently clicked the top-right menu bar clock to open Notification Center.
+    /// Does NOT trigger merely from hovering near the top-right corner, so notifications still hide at 0ms.
+    private static func isUserUsingNotificationCenter() -> Bool {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil &&
               ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil &&
               NSClassFromString("XCTestCase") == nil else {
             return false
         }
-        let now = CFAbsoluteTimeGetCurrent()
-        let mainWidth = CGDisplayBounds(CGMainDisplayID()).width
-        guard let loc = CGEvent(source: nil)?.location else {
-            return now < userOpenedNotificationCenterUntil
-        }
-        if now < userOpenedNotificationCenterUntil && loc.x >= (mainWidth - 450) {
-            return true
-        }
-        return loc.y <= 44 && loc.x >= (mainWidth - 400)
+        return CFAbsoluteTimeGetCurrent() < userOpenedNotificationCenterUntil
     }
 
     // MARK: - Instant Accessibility (AXUIElement) Notification Extraction
@@ -589,10 +539,6 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
         var payloads: [SystemNotificationPayload] = []
 
         for window in windows {
-            var sidebarNodes = 0
-            if Self.isNotificationCenterSidebar(in: window, nodeCount: &sidebarNodes) {
-                continue
-            }
             var containers: [AXUIElement] = []
             var containerNodeCount = 0
             Self.findBannerContainers(in: window, nodeCount: &containerNodeCount, into: &containers)
@@ -827,7 +773,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                 guard let loc = CGEvent(source: nil)?.location else { return }
                 let mainWidth = CGDisplayBounds(CGMainDisplayID()).width
                 if loc.y <= 44 && loc.x >= (mainWidth - 420) {
-                    Self.userOpenedNotificationCenterUntil = CFAbsoluteTimeGetCurrent() + 3.0
+                    Self.userOpenedNotificationCenterUntil = CFAbsoluteTimeGetCurrent() + 30.0
                     // Restore NotificationCenter window immediately if it was previously parked offscreen
                     if let ncApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").first {
                         let axApp = AXUIElementCreateApplication(ncApp.processIdentifier)
@@ -862,7 +808,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
     }
 
     private func handleAXWindowCreated() {
-        guard isSuppressionEnabled, !Self.isCursorInMenuBarTopRight() else { return }
+        guard isSuppressionEnabled, !Self.isUserUsingNotificationCenter() else { return }
         // Move banner window off-screen SYNCHRONOUSLY at 0ms before doing any async work or AX text traversal
         let movedNow = Self.moveBannerWindowsOffscreen()
         suppressionQueue.async { [weak self] in
@@ -936,7 +882,7 @@ public final class SystemNotificationObserver: SystemNotificationObserverProtoco
                         }
                     }
                     let now = CFAbsoluteTimeGetCurrent()
-                    if !Self.isCursorInMenuBarTopRight() &&
+                    if !Self.isUserUsingNotificationCenter() &&
                        Self.isNativeBannerWindowVisible() {
                         // Move offscreen FIRST before reading AX texts so banner disappears immediately
                         Self.moveBannerWindowsOffscreen()

@@ -420,7 +420,7 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
 
         let winBounds = self.bounds
         let visualX = (winBounds.width - visualWidth) / 2.0
-        let visualY: CGFloat = 0 // In NSHostingView, isFlipped == true, so the notch sits flush at y = 0
+        let visualY: CGFloat = self.isFlipped ? 0 : (winBounds.height - visualHeight)
         let activeRect = CGRect(x: visualX, y: visualY, width: visualWidth, height: visualHeight)
 
         let interactiveRect = activeRect.insetBy(dx: -4, dy: -4)
